@@ -105,6 +105,7 @@ next_empty_row = len(rem_ladies) + 3
 print('Check gsheet against local directory:')
 
 for name, lady in loc_ladies.items():
+  # print(name) # copy and paste from here if mismatch due to special characters
   if name in rem_ladies:
     if rem_ladies[name]['Image Folder?'] == 'N':
       cell = sheet.findall(name).pop(0)
