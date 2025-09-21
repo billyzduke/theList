@@ -34,7 +34,7 @@ for row in dicList:
     # print(row)
   
 rem_ladies = dict(natsorted(gsh_ladies.items(), key=lambda x: x[0].casefold()))
-print(rem_ladies.keys())
+# print(rem_ladies.keys())
 
 moa_ladies = {}
 ladiesPath = '/Volumes/Moana/Images/Ladies/'
@@ -102,19 +102,27 @@ loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 next_empty_row = len(rem_ladies) + 3
 # print(listRefs)
 
+print('Check gsheet against local directory:')
+
 for name, lady in loc_ladies.items():
   if name in rem_ladies:
     if rem_ladies[name]['Image Folder?'] == 'N':
       cell = sheet.findall(name).pop(0)
-      sheet.update_cell(cell.row, cell.col + 1, 'Y')
+      # sheet.update_cell(cell.row, cell.col + 1, 'Y')
   else:
     if (len(lady['psd']) or len(lady['psb'])):
       print(name, lady['psd'], lady['psb'])
     else:  
-      sheet.update_cell(next_empty_row, 1, name) # NAME
-      sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
-      sheet.update_cell(next_empty_row, 3, 'N')
+      # sheet.update_cell(next_empty_row, 1, name) # NAME
+      # sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
+      # sheet.update_cell(next_empty_row, 3, 'N')
       next_empty_row += 1
+
+print('Check local directory against gsheet:')
+
+for name, lady in rem_ladies.items():
+  if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
+    print(name)
 
     
 # { 'NAME': 1865,
