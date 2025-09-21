@@ -79,11 +79,13 @@ for root, subs, imgs in os.walk(ladiesPath):
             isPsd = re.compile(r'\.psd$')
             m = isPsd.search(i)
             if m:
+              moa_ladies[name]['img'] -= 1
               moa_ladies[name]['psd'].append(i)
 
             isPsb = re.compile(r'\.psb$')
             m = isPsb.search(i)
             if m:
+              moa_ladies[name]['img'] -= 1
               moa_ladies[name]['psb'].append(i)
 
             isAvif = re.compile(r'\.avif$')
@@ -107,17 +109,49 @@ print('Check gsheet against local directory:')
 for name, lady in loc_ladies.items():
   # print(name) # copy and paste from here if mismatch due to special characters
   if name in rem_ladies:
-    if rem_ladies[name]['Image Folder?'] == 'N':
-      cell = sheet.findall(name).pop(0)
+    rem = rem_ladies[name]
+    print('REMOTE:', name, rem)
+    print('LOCAL:', name, lady)
+    if rem_ladies[name]['Image Folder?'] == 'Y':
+    # == 'N':
+      # cell = sheet.findall(name).pop(0)
       # sheet.update_cell(cell.row, cell.col + 1, 'Y')
-  else:
-    if (len(lady['psd']) or len(lady['psb'])):
-      print(name, lady['psd'], lady['psb'])
-    else:  
-      # sheet.update_cell(next_empty_row, 1, name) # NAME
-      # sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
-      # sheet.update_cell(next_empty_row, 3, 'N')
-      next_empty_row += 1
+    # else:
+      rem['img'] = int(rem['img']) if rem['img'] else 0
+      rem['gif'] = int(rem['gif']) if rem['gif'] else 0
+      rem['jpg'] = int(rem['jpg']) if rem['jpg'] else 0
+      rem['png'] = int(rem['png']) if rem['png'] else 0
+      rem['webp'] = int(rem['webp']) if rem['webp'] else 0
+      rem['avif'] = int(rem['avif']) if rem['avif'] else 0
+      rem['subs'] = int(rem['subs']) if rem['subs'] else 0
+      
+      lady_subs = len(lady['subs'])
+      
+      if rem['img'] != lady['img'] or rem['gif'] != lady['gif'] or rem['jpg'] != lady['jpg'] or rem['png'] != lady['png'] or rem['webp'] != lady['webp'] or rem['avif'] != lady['avif'] or rem['subs'] != lady_subs:
+        cell = sheet.findall(name).pop(0)
+        
+      if rem['img'] != lady['img']:
+        sheet.update_cell(cell.row, cell.col + 15, lady['img'])
+      if rem['gif'] != lady['gif']:
+        sheet.update_cell(cell.row, cell.col + 16, lady['gif'])
+      if rem['jpg'] != lady['jpg']:
+        sheet.update_cell(cell.row, cell.col + 17, lady['jpg'])
+      if rem['png'] != lady['png']:
+        sheet.update_cell(cell.row, cell.col + 18, lady['png'])
+      if rem['webp'] != lady['webp']:
+        sheet.update_cell(cell.row, cell.col + 19, lady['webp'])
+      if rem['avif'] != lady['avif']:
+        sheet.update_cell(cell.row, cell.col + 20, lady['avif'])
+      if rem['subs'] != lady_subs:
+        sheet.update_cell(cell.row, cell.col + 21, lady_subs)
+      # if lady['jpeg'] > 0:
+      # if (len(lady['psd']) or len(lady['psb'])):
+    print()
+  else:  
+    # sheet.update_cell(next_empty_row, 1, name) # NAME
+    # sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
+    # sheet.update_cell(next_empty_row, 3, 'N')
+    next_empty_row += 1
 
 print('Check local directory against gsheet:')
 
@@ -143,3 +177,10 @@ for name, lady in rem_ladies.items():
 #   'url': 2
 # }
 
+# 16 img
+# 17 gif
+# 18 jpg
+# 19 png
+# 20 webp
+# 21 avif
+# 22 subs
