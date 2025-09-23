@@ -132,14 +132,16 @@ for name, lady in loc_ladies.items():
             if blendus > maxBlendus:
               maxBlendus = blendus
         if maxBlendus > 0 and rem['blendus?'] != maxBlendus:
-          blendums[name] = {'blendus?': rem['blendus?'], 'maxBlendus': maxBlendus}
-          cell = sheet.findall(name).pop(0)
           if maxBlendus <= 1280:
             if maxBlendus not in [900, 1024, 1280]:
               maxBlendus = 'rando'
           else:
             maxBlendus = 'xlarge'
-          sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
+          if rem['blendus?'] != maxBlendus:
+            cell = sheet.findall(name).pop(0)
+            blendums[name] = {'blendus?': rem['blendus?'], 'maxBlendus': maxBlendus}
+            sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
+            print(blendums[name])
     
       rem['img'] = int(rem['img']) if rem['img'] else 0
       rem['gif'] = int(rem['gif']) if rem['gif'] else 0
@@ -171,7 +173,7 @@ for name, lady in loc_ladies.items():
         sheet.update_cell(cell.row, cell.col + 17, lady_subs)
       # if lady['jpeg'] > 0:
       # if (len(lady['psd']) or len(lady['psb'])):
-    print()
+    # print()
   else:  
     sheet.update_cell(next_empty_row, 1, name) # NAME
     sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
@@ -184,7 +186,7 @@ for name, lady in rem_ladies.items():
   if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
     print(name)
 
-print(blendums)
+# print(blendums)
 
     
 # { 'NAME': 1865,
