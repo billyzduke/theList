@@ -106,17 +106,41 @@ next_empty_row = len(rem_ladies) + 3
 
 print('Check gsheet against local directory:')
 
+blendums = {}
+
 for name, lady in loc_ladies.items():
   # print(name) # copy and paste from here if mismatch due to special characters
   if name in rem_ladies:
     rem = rem_ladies[name]
-    print('REMOTE:', name, rem)
-    print('LOCAL:', name, lady)
+    # print('REMOTE:', name, rem)
+    # print('LOCAL:', name, lady)
     if rem_ladies[name]['Image Folder?'] == 'Y':
+      cell = 0
     # == 'N':
       # cell = sheet.findall(name).pop(0)
       # sheet.update_cell(cell.row, cell.col + 1, 'Y')
     # else:
+      if len(lady['psd']):
+        maxBlendus = 0
+        for psd in lady['psd']:
+          isBlendus = re.compile(r'^blendus-')
+          m = isBlendus.search(psd)
+          if m:
+            blenDims = re.compile(r'[\d]{3,4}')
+            m = blenDims.search(psd)
+            blendus = int(m.group())
+            if blendus > maxBlendus:
+              maxBlendus = blendus
+        if maxBlendus > 0 and rem['blendus?'] != maxBlendus:
+          blendums[name] = {'blendus?': rem['blendus?'], 'maxBlendus': maxBlendus}
+          cell = sheet.findall(name).pop(0)
+          if maxBlendus <= 1280:
+            if maxBlendus not in [900, 1024, 1280]:
+              maxBlendus = 'rando'
+          else:
+            maxBlendus = 'xlarge'
+          sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
+    
       rem['img'] = int(rem['img']) if rem['img'] else 0
       rem['gif'] = int(rem['gif']) if rem['gif'] else 0
       rem['jpg'] = int(rem['jpg']) if rem['jpg'] else 0
@@ -128,29 +152,30 @@ for name, lady in loc_ladies.items():
       lady_subs = len(lady['subs'])
       
       if rem['img'] != lady['img'] or rem['gif'] != lady['gif'] or rem['jpg'] != lady['jpg'] or rem['png'] != lady['png'] or rem['webp'] != lady['webp'] or rem['avif'] != lady['avif'] or rem['subs'] != lady_subs:
-        cell = sheet.findall(name).pop(0)
+        if cell == 0:
+          cell = sheet.findall(name).pop(0)
         
-      if rem['img'] != lady['img']:
-        sheet.update_cell(cell.row, cell.col + 15, lady['img'])
+      # if rem['img'] != lady['img']:
+      #   sheet.update_cell(cell.row, cell.col + 11, lady['img'])
       if rem['gif'] != lady['gif']:
-        sheet.update_cell(cell.row, cell.col + 16, lady['gif'])
+        sheet.update_cell(cell.row, cell.col + 12, lady['gif'])
       if rem['jpg'] != lady['jpg']:
-        sheet.update_cell(cell.row, cell.col + 17, lady['jpg'])
+        sheet.update_cell(cell.row, cell.col + 13, lady['jpg'])
       if rem['png'] != lady['png']:
-        sheet.update_cell(cell.row, cell.col + 18, lady['png'])
+        sheet.update_cell(cell.row, cell.col + 14, lady['png'])
       if rem['webp'] != lady['webp']:
-        sheet.update_cell(cell.row, cell.col + 19, lady['webp'])
+        sheet.update_cell(cell.row, cell.col + 15, lady['webp'])
       if rem['avif'] != lady['avif']:
-        sheet.update_cell(cell.row, cell.col + 20, lady['avif'])
+        sheet.update_cell(cell.row, cell.col + 16, lady['avif'])
       if rem['subs'] != lady_subs:
-        sheet.update_cell(cell.row, cell.col + 21, lady_subs)
+        sheet.update_cell(cell.row, cell.col + 17, lady_subs)
       # if lady['jpeg'] > 0:
       # if (len(lady['psd']) or len(lady['psb'])):
     print()
   else:  
-    # sheet.update_cell(next_empty_row, 1, name) # NAME
-    # sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
-    # sheet.update_cell(next_empty_row, 3, 'N')
+    sheet.update_cell(next_empty_row, 1, name) # NAME
+    sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
+    sheet.update_cell(next_empty_row, 3, 'N')
     next_empty_row += 1
 
 print('Check local directory against gsheet:')
@@ -158,6 +183,8 @@ print('Check local directory against gsheet:')
 for name, lady in rem_ladies.items():
   if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
     print(name)
+
+print(blendums)
 
     
 # { 'NAME': 1865,
@@ -177,10 +204,10 @@ for name, lady in rem_ladies.items():
 #   'url': 2
 # }
 
-# 16 img
-# 17 gif
-# 18 jpg
-# 19 png
-# 20 webp
-# 21 avif
-# 22 subs
+# 12 img
+# 13 gif
+# 14 jpg
+# 15 png
+# 16 webp
+# 17 avif
+# 18 subs
