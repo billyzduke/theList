@@ -48,7 +48,9 @@ for root, subs, imgs in os.walk(ladiesPath):
       if not m:
         multiNames = re.compile(r' & ')
         m = multiNames.search(name)
-        if not m:
+        if m: 
+          print('LOCAL COMBO FOLDER DETECTED:', name, "\n")
+        else:
           # name = name.encode().decode('utf-8')    
           moa_ladies[name] = {'img': 0, 'gif': 0, 'jpg': 0, 'jpeg': 0, 'png': 0, 'psd': [], 'psb': [], 'avif': 0, 'webp': 0, 'subs': subs}
           
@@ -104,7 +106,7 @@ loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 next_empty_row = len(rem_ladies) + 3
 # print(listRefs)
 
-print('CHECKING gsheet AGAINST local Ladies directory...', "\n")
+print("\n\n", 'READING THE ROOM!', "\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
 for name, lady in loc_ladies.items():
   loc_subs = len(lady['subs'])
@@ -118,9 +120,8 @@ for name, lady in loc_ladies.items():
     next_empty_row += 1
     
   rem = rem_ladies[name]
-  if name == 'Brandi Carlile':
-    print('REMOTE:', name, rem)
-    print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
+  # print('REMOTE:', name, rem)
+  # print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
 
   if rem['Image Folder?'] == 'Y':
     cell = 0
@@ -168,20 +169,26 @@ for name, lady in loc_ladies.items():
         if rem[col] != lady[col]:
           sheet.update_cell(cell.row, cell.col + col_shift, lady[col])
           print('REMOTE LADY UPDATED:', name, {col: lady[col]}, "\n")
-          col_shift += 1
-          
+        col_shift += 1
+      
     if imgs == 0 and loc_subs == 0:
+      if cell == 0:
+        cell = sheet.findall(name).pop(0)
+      sheet.update_cell(cell.row, 2, 'N') # Image Folder?
+      print('REMOTE LADY UPDATED:', name, {'Image Folder?': 'N'}, "\n")
+      
       try:
-        os.rmdir(root)
-        print('EMPTY LOCAL FOLDER DELETED:', name, "\n")
+        ladyPath = ladiesPath + name
+        os.rmdir(ladyPath)
+        print('EMPTY LOCAL FOLDER DELETED:', ladyPath, "\n")
       except OSError as e:
-        print('ERROR ATTEMPTING TO DELETE LOCAL FOLDER:', name, "\n", e, "\n")
+        print('ERROR ATTEMPTING TO DELETE LOCAL FOLDER:', ladyPath, "\n", e, "\n")
       
     if rem['subs'] != loc_subs:
       sheet.update_cell(cell.row, cell.col + 17, loc_subs)
       print('REMOTE LADY UPDATED:', name, {'subs': loc_subs}, "\n")
 
-print('CHECKING local Ladies directory AGAINST gsheet...', "\n")
+print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
 for name, lady in rem_ladies.items():
   if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
@@ -195,6 +202,8 @@ for name, lady in rem_ladies.items():
       print('PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER:', ladyPath, "\n")
     except Exception as e:
       print('ERROR ATTEMPTING TO CREATE LOCAL FOLDER:', name, "\n", e, "\n")
+
+print("\n\n", 'SYNC COMPLETE!')
 
 # TOTALS ROW REF    
 # { 'NAME': 1865,
