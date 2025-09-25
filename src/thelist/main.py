@@ -49,7 +49,7 @@ for root, subs, imgs in os.walk(ladiesPath):
         multiNames = re.compile(r' & ')
         m = multiNames.search(name)
         if m: 
-          print('LOCAL COMBO FOLDER DETECTED:', name, "\n")
+          print('LOCAL COMBO FOLDER DETECTED (AND BYPASSED):', name, "\n")
         else:
           # name = name.encode().decode('utf-8')    
           moa_ladies[name] = {'img': 0, 'gif': 0, 'jpg': 0, 'jpeg': 0, 'png': 0, 'psd': [], 'psb': [], 'avif': 0, 'webp': 0, 'subs': subs}
