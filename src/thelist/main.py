@@ -104,91 +104,99 @@ loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 next_empty_row = len(rem_ladies) + 3
 # print(listRefs)
 
-print('Check gsheet against local directory:')
-
-blendums = {}
+print('CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
 for name, lady in loc_ladies.items():
-  # print(name) # copy and paste from here if mismatch due to special characters
-  if name in rem_ladies:
-    rem = rem_ladies[name]
-    # print('REMOTE:', name, rem)
-    # print('LOCAL:', name, lady)
-    if rem_ladies[name]['Image Folder?'] == 'Y':
-      cell = 0
-    # == 'N':
-      # cell = sheet.findall(name).pop(0)
-      # sheet.update_cell(cell.row, cell.col + 1, 'Y')
-    # else:
-      if len(lady['psd']):
-        maxBlendus = 0
-        for psd in lady['psd']:
-          isBlendus = re.compile(r'^blendus-')
-          m = isBlendus.search(psd)
-          if m:
-            blenDims = re.compile(r'[\d]{3,4}')
-            m = blenDims.search(psd)
-            blendus = int(m.group())
-            if blendus > maxBlendus:
-              maxBlendus = blendus
-        if maxBlendus > 0 and rem['blendus?'] != maxBlendus:
-          if maxBlendus <= 1280:
-            if maxBlendus not in [900, 1024, 1280]:
-              maxBlendus = 'rando'
-          else:
-            maxBlendus = 'xlarge'
-          if rem['blendus?'] != maxBlendus:
-            cell = sheet.findall(name).pop(0)
-            blendums[name] = {'blendus?': rem['blendus?'], 'maxBlendus': maxBlendus}
-            sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
-            print(blendums[name])
-    
-      rem['img'] = int(rem['img']) if rem['img'] else 0
-      rem['gif'] = int(rem['gif']) if rem['gif'] else 0
-      rem['jpg'] = int(rem['jpg']) if rem['jpg'] else 0
-      rem['png'] = int(rem['png']) if rem['png'] else 0
-      rem['webp'] = int(rem['webp']) if rem['webp'] else 0
-      rem['avif'] = int(rem['avif']) if rem['avif'] else 0
-      rem['subs'] = int(rem['subs']) if rem['subs'] else 0
-      
-      lady_subs = len(lady['subs'])
-      
-      if rem['img'] != lady['img'] or rem['gif'] != lady['gif'] or rem['jpg'] != lady['jpg'] or rem['png'] != lady['png'] or rem['webp'] != lady['webp'] or rem['avif'] != lady['avif'] or rem['subs'] != lady_subs:
-        if cell == 0:
-          cell = sheet.findall(name).pop(0)
-        
-      # if rem['img'] != lady['img']:
-      #   sheet.update_cell(cell.row, cell.col + 11, lady['img'])
-      if rem['gif'] != lady['gif']:
-        sheet.update_cell(cell.row, cell.col + 12, lady['gif'])
-      if rem['jpg'] != lady['jpg']:
-        sheet.update_cell(cell.row, cell.col + 13, lady['jpg'])
-      if rem['png'] != lady['png']:
-        sheet.update_cell(cell.row, cell.col + 14, lady['png'])
-      if rem['webp'] != lady['webp']:
-        sheet.update_cell(cell.row, cell.col + 15, lady['webp'])
-      if rem['avif'] != lady['avif']:
-        sheet.update_cell(cell.row, cell.col + 16, lady['avif'])
-      if rem['subs'] != lady_subs:
-        sheet.update_cell(cell.row, cell.col + 17, lady_subs)
-      # if lady['jpeg'] > 0:
-      # if (len(lady['psd']) or len(lady['psb'])):
-    # print()
-  else:  
+  loc_subs = len(lady['subs'])
+  
+  if name not in rem_ladies and (lady['img'] > 0 or loc_subs > 0):
     sheet.update_cell(next_empty_row, 1, name) # NAME
     sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
     sheet.update_cell(next_empty_row, 3, 'N')
+    rem_ladies[name] = {'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': lady['img'], 'gif': lady['img'], 'jpg': lady['jpg'], 'png': lady['png'], 'webp': lady['webp'], 'avif': lady['avif'], 'subs': loc_subs, 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': ''}
+    print('REMOTE LADY ADDED:', name, rem_ladies[name], "\n")
     next_empty_row += 1
+    
+  rem = rem_ladies[name]
+  if name == 'Brandi Carlile':
+    print('REMOTE:', name, rem)
+    print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
 
-print('Check local directory against gsheet:')
+  if rem['Image Folder?'] == 'Y':
+    cell = 0
+  # == 'N':
+    # cell = sheet.findall(name).pop(0)
+    # sheet.update_cell(cell.row, cell.col + 1, 'Y')
+  # else:
+    if len(lady['psd']):
+      maxBlendus = 0
+      for psd in lady['psd']:
+        isBlendus = re.compile(r'^blendus-')
+        m = isBlendus.search(psd)
+        if m:
+          blenDims = re.compile(r'[\d]{3,4}')
+          m = blenDims.search(psd)
+          blendus = int(m.group())
+          if blendus > maxBlendus:
+            maxBlendus = blendus
+      if maxBlendus > 0 and rem['blendus?'] != maxBlendus:
+        if maxBlendus <= 1280:
+          if maxBlendus not in [900, 1024, 1280]:
+            maxBlendus = 'rando'
+        else:
+          maxBlendus = 'xlarge'
+        if rem['blendus?'] != maxBlendus:
+          cell = sheet.findall(name).pop(0)
+          sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
+          print('REMOTE LADY UPDATED:', name, {'blendus?': maxBlendus}, "\n")
+          
+    cols = ['img', 'gif', 'jpg', 'png', 'webp', 'avif']
+          
+    for col in cols:
+      rem[col] = int(rem[col]) if rem[col] else 0
+        
+    for col in cols:
+      if cell == 0 and (rem['subs'] != loc_subs or rem[col] != lady[col]):
+        cell = sheet.findall(name).pop(0)
+        
+    col_shift = 12
+    imgs = 0
+    
+    for col in cols:
+      if col != 'img':
+        imgs += lady[col]
+        if rem[col] != lady[col]:
+          sheet.update_cell(cell.row, cell.col + col_shift, lady[col])
+          print('REMOTE LADY UPDATED:', name, {col: lady[col]}, "\n")
+          col_shift += 1
+          
+    if imgs == 0 and loc_subs == 0:
+      try:
+        os.rmdir(root)
+        print('EMPTY LOCAL FOLDER DELETED:', name, "\n")
+      except OSError as e:
+        print('ERROR ATTEMPTING TO DELETE LOCAL FOLDER:', name, "\n", e, "\n")
+      
+    if rem['subs'] != loc_subs:
+      sheet.update_cell(cell.row, cell.col + 17, loc_subs)
+      print('REMOTE LADY UPDATED:', name, {'subs': loc_subs}, "\n")
+
+print('CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
 for name, lady in rem_ladies.items():
   if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
-    print(name)
+    ladyPath = ladiesPath + name
+    try:
+      os.mkdir(ladyPath) # Creates a single directory
+      print('LOCAL FOLDER ADDED:', ladyPath, "\n")
+    except FileExistsError:
+      print('LOCAL FOLDER ALREADY EXISTS:', ladyPath, "\n")
+    except PermissionError:
+      print('PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER:', ladyPath, "\n")
+    except Exception as e:
+      print('ERROR ATTEMPTING TO CREATE LOCAL FOLDER:', name, "\n", e, "\n")
 
-# print(blendums)
-
-    
+# TOTALS ROW REF    
 # { 'NAME': 1865,
 #   'Image Folder?': 1390,
 #   'blendus?': 54,
@@ -206,6 +214,7 @@ for name, lady in rem_ladies.items():
 #   'url': 2
 # }
 
+# IMAGE/STATS COUNT COLUMNS
 # 12 img
 # 13 gif
 # 14 jpg
