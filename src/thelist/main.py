@@ -106,7 +106,10 @@ loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 next_empty_row = len(rem_ladies) + 3
 # print(listRefs)
 
-print("\n\n", 'READING THE ROOM!', "\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
+print("\n\n", 'READING THE ROOM!', "\n\n")
+print(f"inhumantouch blendus gsheet contains {len(rem_ladies)} ladies\n")
+print(f"local Ladies image directory contains {len(loc_ladies)} ladies\n")
+print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
 for name, lady in loc_ladies.items():
   loc_subs = len(lady['subs'])
