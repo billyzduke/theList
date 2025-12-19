@@ -2,8 +2,10 @@ from charset_normalizer import detect
 import os
 import re
 import gspread
+import bZdUtils
 from natsort import natsorted
 from oauth2client.service_account import ServiceAccountCredentials
+
 
 # Define the scope
 scope = [
@@ -18,42 +20,62 @@ client = gspread.authorize(credentials)
 # Open the Google Sheet
 sheet = client.open('@inhumantouch').get_worksheet(1)
 
-# TEST Fetch the first row of data
-# first_row = sheet.row_values(1)
-# print(f"First row of data: {first_row}")
+# inhale all rows and column values
+dicLess = sheet.get_all_values()
 
-dicList = sheet.get_all_records()
+# column labels
+dicKeys = dicLess.pop(0)
+#print(dicKeys)
 
-listRefs = dicList.pop(0)
-# print(listRefs)
+# column totals
+dicTots = dicLess.pop(0)
+dicTotals = dict(zip(dicKeys, dicTots))
 
+#gsh = google sheet
 gsh_ladies = {}
-for row in dicList:
-  if len(row['NAME']) > 0:
-    gsh_ladies[row.pop('NAME')] = row
-    # print(row)
+
+# gather/organize/label the rows from the google sheet
+for row in dicLess:
+  dicVals = row
+  dicList = dict(zip(dicKeys, dicVals))
   
+  if len(dicList['NAME']) > 0:
+    gsh_ladies[dicList.pop('NAME')] = dicList
+    #print(dicList)
+
 rem_ladies = dict(natsorted(gsh_ladies.items(), key=lambda x: x[0].casefold()))
 # print(rem_ladies.keys())
 
+#moa = Moana, the local drive where all the images of the ladies live
 moa_ladies = {}
 ladiesPath = '/Volumes/Moana/Images/Ladies/'
 
+# gather relevant info from local drive
 for root, subs, imgs in os.walk(ladiesPath):
+  # disregard the root directory
   if root.count('/') == 5:
     name = os.path.basename(root)
+    # disregard categorical directories (as opposed to single person's name)
     if len(name):
       notName = re.compile(r'^!')
       m = notName.search(name)
+      # detect and disregard combination folders with multiple names
       if not m:
         multiNames = re.compile(r' & ')
         m = multiNames.search(name)
         if m: 
           print('LOCAL COMBO FOLDER DETECTED (AND BYPASSED):', name, "\n")
         else:
+          # congrats, it's one lady's name
+          # proceed
+          
           # name = name.encode().decode('utf-8')    
           moa_ladies[name] = {'img': 0, 'gif': 0, 'jpg': 0, 'jpeg': 0, 'png': 0, 'psd': [], 'psb': [], 'avif': 0, 'webp': 0, 'subs': subs}
           
+          # annoying but apparently necessary, even though I cannot even see these where they are supposedly showing up
+          imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store')
+            
+          # count and sort image files by ext/type 
           for i in imgs:
             moa_ladies[name]['img'] += 1
             
@@ -106,19 +128,23 @@ loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 next_empty_row = len(rem_ladies) + 3
 # print(listRefs)
 
+# first, update the gsheet with local changes
 print("\n\n", 'READING THE ROOM!', "\n\n")
 print(f"inhumantouch blendus gsheet contains {len(rem_ladies)} ladies\n")
+print("\n", dicTotals, "\n")
 print(f"local Ladies image directory contains {len(loc_ladies)} ladies\n")
 print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
+# loop thru local ladies
 for name, lady in loc_ladies.items():
   loc_subs = len(lady['subs'])
   
+  # if local lady folder has images or subdirectories, add it to the gsheet
   if name not in rem_ladies and (lady['img'] > 0 or loc_subs > 0):
     sheet.update_cell(next_empty_row, 1, name) # NAME
     sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
     sheet.update_cell(next_empty_row, 3, 'N')
-    rem_ladies[name] = {'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': lady['img'], 'gif': lady['img'], 'jpg': lady['jpg'], 'png': lady['png'], 'webp': lady['webp'], 'avif': lady['avif'], 'subs': loc_subs, 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': ''}
+    rem_ladies[name] = {'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': lady['img'], 'gif': lady['img'], 'jpg': lady['jpg'], 'png': lady['png'], 'webp': lady['webp'], 'avif': lady['avif'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}
     print('REMOTE LADY ADDED:', name, rem_ladies[name], "\n")
     next_empty_row += 1
     
@@ -143,14 +169,15 @@ for name, lady in loc_ladies.items():
           blendus = int(m.group())
           if blendus > maxBlendus:
             maxBlendus = blendus
-      if maxBlendus > 0 and rem['blendus?'] != maxBlendus:
+      if maxBlendus > 0 and rem['blendus?'] != str(maxBlendus):
         if maxBlendus <= 1280:
           if maxBlendus not in [900, 1024, 1280]:
             maxBlendus = 'rando'
         else:
           maxBlendus = 'xlarge'
-        if rem['blendus?'] != maxBlendus:
+        if rem['blendus?'] != str(maxBlendus):
           cell = sheet.findall(name).pop(0)
+          #bZdUtils.line_info()
           sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
           print('REMOTE LADY UPDATED:', name, {'blendus?': maxBlendus}, "\n")
           
@@ -160,9 +187,15 @@ for name, lady in loc_ladies.items():
       rem[col] = int(rem[col]) if rem[col] else 0
         
     for col in cols:
-      if cell == 0 and (rem['subs'] != loc_subs or rem[col] != lady[col]):
-        cell = sheet.findall(name).pop(0)
-        
+      if col != 'img':
+        if cell == 0 and (bZdUtils.safe_str_to_int(rem['subs']) != loc_subs or rem[col] != lady[col]):
+          #print(name, "- rem['subs']:", rem['subs'], type(rem['subs']), type(bZdUtils.safe_str_to_int(rem['subs'])), "- loc_subs:", loc_subs, type(loc_subs))
+          #print(name, "- cell:", cell, type(cell), "- rem[col]:", rem[col], type(rem[col]), "- lady[col]:", lady[col], type(lady[col]))
+          #print("rem:", rem)
+          #print("lady:", lady)
+          cell = sheet.findall(name).pop(0)
+          bZdUtils.line_info()
+          
     col_shift = 12
     imgs = 0
     
@@ -177,6 +210,7 @@ for name, lady in loc_ladies.items():
     if imgs == 0 and loc_subs == 0:
       if cell == 0:
         cell = sheet.findall(name).pop(0)
+        #bZdUtils.line_info()
       sheet.update_cell(cell.row, 2, 'N') # Image Folder?
       print('REMOTE LADY UPDATED:', name, {'Image Folder?': 'N'}, "\n")
       
@@ -187,7 +221,7 @@ for name, lady in loc_ladies.items():
       except OSError as e:
         print('ERROR ATTEMPTING TO DELETE LOCAL FOLDER:', ladyPath, "\n", e, "\n")
       
-    if rem['subs'] != loc_subs:
+    if bZdUtils.safe_str_to_int(rem['subs']) != loc_subs:
       sheet.update_cell(cell.row, cell.col + 17, loc_subs)
       print('REMOTE LADY UPDATED:', name, {'subs': loc_subs}, "\n")
 

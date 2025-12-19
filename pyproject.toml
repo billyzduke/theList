@@ -13,6 +13,7 @@ dependencies = [
     "natsort (>=8.4.0,<9.0.0)",
     "charset-normalizer (>=3.4.3,<4.0.0)",
     "macos-tags (>=1.5.1,<2.0.0)",
+    "google-auth (>=2.45.0,<3.0.0)",
 ]
 
 [tool.poetry]
