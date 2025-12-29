@@ -1,50 +1,32 @@
-from charset_normalizer import detect
+import pandas as pd
+import pygsheets
+import numpy as np
+#from charset_normalizer import detect
+import json
 import os
 import re
-import gspread
+import sys
+#import gspread
 import bZdUtils
 from natsort import natsorted
-from oauth2client.service_account import ServiceAccountCredentials
+#from oauth2client.service_account import ServiceAccountCredentials
 
+# Auth and Open 
+gc = pygsheets.authorize(service_file='credentials.json')
+sh = gc.open('@inhumantouch')
+wks = sh.worksheet_by_title('blendus synced pretty')
 
-# Define the scope
-scope = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
+# Efficient Read
+# This reads the whole sheet into a pandas dataframe in one go. 
+# 'has_header=True' uses the first row as column names.
+df = wks.get_as_df(has_header=True)
 
-# Authenticate with credentials
-credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-client = gspread.authorize(credentials)
+dicTotals = df.iloc[0]
+rem_ladies = df.iloc[1:]
 
-# Open the Google Sheet
-sheet = client.open('@inhumantouch').get_worksheet(1)
-
-# inhale all rows and column values
-dicLess = sheet.get_all_values()
-
-# column labels
-dicKeys = dicLess.pop(0)
-#print(dicKeys)
-
-# column totals
-dicTots = dicLess.pop(0)
-dicTotals = dict(zip(dicKeys, dicTots))
-
-#gsh = google sheet
-gsh_ladies = {}
-
-# gather/organize/label the rows from the google sheet
-for row in dicLess:
-  dicVals = row
-  dicList = dict(zip(dicKeys, dicVals))
-  
-  if len(dicList['NAME']) > 0:
-    gsh_ladies[dicList.pop('NAME')] = dicList
-    #print(dicList)
-
-rem_ladies = dict(natsorted(gsh_ladies.items(), key=lambda x: x[0].casefold()))
-# print(rem_ladies.keys())
+print("\n\n", 'READING THE ROOM!', "\n\n")
+print("\n", dicTotals, "\n")
+print(f"inhumantouch blendus gsheet contains {len(rem_ladies)} ladies\n")
 
 #moa = Moana, the local drive where all the images of the ladies live
 moa_ladies = {}
@@ -64,7 +46,7 @@ for root, subs, imgs in os.walk(ladiesPath):
         multiNames = re.compile(r' & ')
         m = multiNames.search(name)
         if m: 
-          print('LOCAL COMBO FOLDER DETECTED (AND BYPASSED):', name, "\n")
+          print('LOCAL COMBO FOLDER DETECTED (AND BYPASSED):', name)
         else:
           # congrats, it's one lady's name
           # proceed
@@ -125,42 +107,39 @@ for root, subs, imgs in os.walk(ladiesPath):
 loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 # print(loc_ladies)
 
-next_empty_row = len(rem_ladies) + 3
-# print(listRefs)
+print(f"\nlocal Ladies image directory contains {len(loc_ladies)} ladies\n")
 
 # first, update the gsheet with local changes
-print("\n\n", 'READING THE ROOM!', "\n\n")
-print(f"inhumantouch blendus gsheet contains {len(rem_ladies)} ladies\n")
-print("\n", dicTotals, "\n")
-print(f"local Ladies image directory contains {len(loc_ladies)} ladies\n")
 print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
+REMOTE_LADIES_CHANGED = {'REMOTE LADIES ADDED': {}, 'REMOTE LADIES UPDATED': {}}
+LOCAL_LADIES_CHANGED = {'LOCAL LADIES ADDED': {}, 'LOCAL LADIES DELETED': {}}
+
 # loop thru local ladies
-for name, lady in loc_ladies.items():
-  loc_subs = len(lady['subs'])
+for name, loc_lady in loc_ladies.items():
+  loc_subs = len(loc_lady['subs'])
+  named = df['NAME'] == name
   
-  # if local lady folder has images or subdirectories, add it to the gsheet
-  if name not in rem_ladies and (lady['img'] > 0 or loc_subs > 0):
-    sheet.update_cell(next_empty_row, 1, name) # NAME
-    sheet.update_cell(next_empty_row, 2, 'Y') # Image Folder?
-    sheet.update_cell(next_empty_row, 3, 'N')
-    rem_ladies[name] = {'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': lady['img'], 'gif': lady['img'], 'jpg': lady['jpg'], 'png': lady['png'], 'webp': lady['webp'], 'avif': lady['avif'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}
-    print('REMOTE LADY ADDED:', name, rem_ladies[name], "\n")
-    next_empty_row += 1
+  # is lady in remote records?
+  rem_lady = df.loc[named]
+  # if remote record does not already exist, add new row to the gsheet
+  if rem_lady.empty:
+    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': loc_lady['img'], 'gif': loc_lady['img'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'webp': loc_lady['webp'], 'avif': loc_lady['avif'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    df = pd.concat([df, new_rem_lady], ignore_index=True)
+    # verify addition of new remote lady to dataframe
+    named = df['NAME'] == name
+    rem_lady = df.loc[named].iloc[0]
+    REMOTE_LADIES_CHANGED['REMOTE LADIES ADDED'][name] = rem_lady['NAME']
+  else:
+    rem_lady = rem_lady.iloc[0]
     
-  rem = rem_ladies[name]
-  # print('REMOTE:', name, rem)
+  # print('REMOTE:', name, rem_lady)
   # print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
 
-  if rem['Image Folder?'] == 'Y':
-    cell = 0
-  # == 'N':
-    # cell = sheet.findall(name).pop(0)
-    # sheet.update_cell(cell.row, cell.col + 1, 'Y')
-  # else:
-    if len(lady['psd']):
+  if rem_lady['Image Folder?'] == 'Y':
+    if len(loc_lady['psd']):
       maxBlendus = 0
-      for psd in lady['psd']:
+      for psd in loc_lady['psd']:
         isBlendus = re.compile(r'^blendus-')
         m = isBlendus.search(psd)
         if m:
@@ -169,76 +148,104 @@ for name, lady in loc_ladies.items():
           blendus = int(m.group())
           if blendus > maxBlendus:
             maxBlendus = blendus
-      if maxBlendus > 0 and rem['blendus?'] != str(maxBlendus):
+      if maxBlendus > 0 and str(rem_lady['blendus?']) != str(maxBlendus):
         if maxBlendus <= 1280:
           if maxBlendus not in [900, 1024, 1280]:
             maxBlendus = 'rando'
         else:
           maxBlendus = 'xlarge'
-        if rem['blendus?'] != str(maxBlendus):
-          cell = sheet.findall(name).pop(0)
-          #bZdUtils.line_info()
-          sheet.update_cell(cell.row, cell.col + 2, maxBlendus)
-          print('REMOTE LADY UPDATED:', name, {'blendus?': maxBlendus}, "\n")
-          
-    cols = ['img', 'gif', 'jpg', 'png', 'webp', 'avif']
-          
-    for col in cols:
-      rem[col] = int(rem[col]) if rem[col] else 0
-        
-    for col in cols:
-      if col != 'img':
-        if cell == 0 and (bZdUtils.safe_str_to_int(rem['subs']) != loc_subs or rem[col] != lady[col]):
-          #print(name, "- rem['subs']:", rem['subs'], type(rem['subs']), type(bZdUtils.safe_str_to_int(rem['subs'])), "- loc_subs:", loc_subs, type(loc_subs))
-          #print(name, "- cell:", cell, type(cell), "- rem[col]:", rem[col], type(rem[col]), "- lady[col]:", lady[col], type(lady[col]))
-          #print("rem:", rem)
-          #print("lady:", lady)
-          cell = sheet.findall(name).pop(0)
-          bZdUtils.line_info()
-          
-    col_shift = 12
-    imgs = 0
+        if str(rem_lady['blendus?']) != str(maxBlendus):
+          df.loc[named, 'blendus?'] = maxBlendus
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['blendus?'] = maxBlendus
     
+    cols = ['img', 'gif', 'jpg', 'png', 'webp', 'avif']
+    
+    # for col in cols:
+    #   df.loc[named, col] = int(rem_lady[col]) if rem_lady[col] else 0
+    
+    imgs = 0
     for col in cols:
       if col != 'img':
-        imgs += lady[col]
-        if rem[col] != lady[col]:
-          sheet.update_cell(cell.row, cell.col + col_shift, lady[col])
-          print('REMOTE LADY UPDATED:', name, {col: lady[col]}, "\n")
-        col_shift += 1
+        imgs += loc_lady[col]
+        if rem_lady[col] != loc_lady[col]:
+          df.loc[named, col] = loc_lady[col]
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name][col] = loc_lady[col]          
       
-    if imgs == 0 and loc_subs == 0:
-      if cell == 0:
-        cell = sheet.findall(name).pop(0)
-        #bZdUtils.line_info()
-      sheet.update_cell(cell.row, 2, 'N') # Image Folder?
-      print('REMOTE LADY UPDATED:', name, {'Image Folder?': 'N'}, "\n")
+    if imgs == 0 and loc_subs == 0 and rem_lady['Image Folder?'] == 'Y':
+      df.loc[named, 'Image Folder?'] = 'N'
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['Image Folder?'] = 'N'          
       
       try:
         ladyPath = ladiesPath + name
         os.rmdir(ladyPath)
-        print('EMPTY LOCAL FOLDER DELETED:', ladyPath, "\n")
+        LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][name] = ladyPath     
       except OSError as e:
-        print('ERROR ATTEMPTING TO DELETE LOCAL FOLDER:', ladyPath, "\n", e, "\n")
+        LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][name] = f'ERROR ATTEMPTING TO DELETE LOCAL FOLDER: {ladyPath}\n{e}'
       
-    if bZdUtils.safe_str_to_int(rem['subs']) != loc_subs:
-      sheet.update_cell(cell.row, cell.col + 17, loc_subs)
-      print('REMOTE LADY UPDATED:', name, {'subs': loc_subs}, "\n")
+    if bZdUtils.safe_str_to_int(rem_lady['subs']) != loc_subs:
+      df.loc[named, 'subs'] = loc_subs
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['subs'] = loc_subs 
+
+print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
 
 print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
-for name, lady in rem_ladies.items():
-  if lady['Image Folder?'] == 'Y' and name not in loc_ladies:
+for i, rem_lady in rem_ladies.iterrows():
+
+  if rem_lady['Image Folder?'] == 'Y' and name not in loc_ladies:
     ladyPath = ladiesPath + name
     try:
       os.mkdir(ladyPath) # Creates a single directory
-      print('LOCAL FOLDER ADDED:', ladyPath, "\n")
+      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = ladyPath     
     except FileExistsError:
-      print('LOCAL FOLDER ALREADY EXISTS:', ladyPath, "\n")
+      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'LOCAL FOLDER ALREADY EXISTS: {ladyPath}'
     except PermissionError:
-      print('PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER:', ladyPath, "\n")
+      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER: {ladyPath}'
     except Exception as e:
-      print('ERROR ATTEMPTING TO CREATE LOCAL FOLDER:', name, "\n", e, "\n")
+      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'ERROR ATTEMPTING TO CREATE LOCAL FOLDER: {name}\n{e}'
+
+print(json.dumps(LOCAL_LADIES_CHANGED, indent=2, default=str))
+
+# Handling NaNs
+# Google Sheets API throws errors if you try to upload NaN/Infinity. 
+# You MUST replace them with empty strings or zeros.
+df = df.fillna('') 
+
+# Date Formatting: Pandas sometimes converts dates to timestamps that look ugly in Sheets. Convert date columns to strings in Python before uploading to preserve the format.
+#df['date'] = df['date'].astype(str)
+
+
+raw_data_sheet = "blendus synced raw"
+
+# 1. Clean up previous test runs
+# Try to find the sheet and delete it so we start fresh
+try:
+    old_test_sheet = sh.worksheet_by_title(raw_data_sheet)
+    sh.del_worksheet(old_test_sheet)
+    print(f"\nDeleted old raw data sheet '{raw_data_sheet}'.")
+except pygsheets.WorksheetNotFound:
+    pass # It didn't exist, so nothing to delete
+
+# 2. Create the new test sheet
+# We can specify the size, or just let it default
+xwks = sh.add_worksheet(raw_data_sheet, rows=100, cols=26)
+
+print(f"Created fresh raw data sheet: {raw_data_sheet}\n")
+
+# Efficient Write clears the sheet and dumps the new data in a SINGLE API call.
+# 'start' specifies the top-left cell.
+# 'fit' resizes the sheet to match the dataframe dimensions (removes extra empty rows).
+xwks.clear() # Wipes everything
+xwks.set_dataframe(df, start='A1', copy_head=True, fit=True)
+
+print(f"Successfully updated {len(df)} rows in a single batch.")
+
+
+
 
 print("\n\n", 'SYNC COMPLETE!')
 
@@ -268,3 +275,5 @@ print("\n\n", 'SYNC COMPLETE!')
 # 16 webp
 # 17 avif
 # 18 subs
+
+
