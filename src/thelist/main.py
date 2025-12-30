@@ -1,15 +1,12 @@
 import pandas as pd
 import pygsheets
 import numpy as np
-#from charset_normalizer import detect
 import json
 import os
 import re
-import sys
-#import gspread
+#import sys
 import bZdUtils
 from natsort import natsorted
-#from oauth2client.service_account import ServiceAccountCredentials
 
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
@@ -20,6 +17,7 @@ wks = sh.worksheet_by_title('blendus synced pretty')
 # This reads the whole sheet into a pandas dataframe in one go. 
 # 'has_header=True' uses the first row as column names.
 df = wks.get_as_df(has_header=True)
+df = df.dropna(subset=['NAME'])
 
 dicTotals = df.iloc[0]
 rem_ladies = df.iloc[1:]
@@ -173,10 +171,11 @@ for name, loc_lady in loc_ladies.items():
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name][col] = loc_lady[col]          
       
-    if imgs == 0 and loc_subs == 0 and rem_lady['Image Folder?'] == 'Y':
-      df.loc[named, 'Image Folder?'] = 'N'
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['Image Folder?'] = 'N'          
+    if imgs == 0 and loc_subs == 0:
+      if rem_lady['Image Folder?'] == 'Y':
+        df.loc[named, 'Image Folder?'] = 'N'
+        REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+        REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['Image Folder?'] = 'N'          
       
       try:
         ladyPath = ladiesPath + name
@@ -218,7 +217,19 @@ df = df.fillna('')
 # Date Formatting: Pandas sometimes converts dates to timestamps that look ugly in Sheets. Convert date columns to strings in Python before uploading to preserve the format.
 #df['date'] = df['date'].astype(str)
 
-
+df = df.sort_values(
+    by=['Image Folder?', 'NAME'],
+    ascending=[False, True]  # True = Ascending, False = Descending
+)
+# drop the last row(s) after sort, this will have become the shifted row totals, which we don't need re-imported anyway
+has_tail = True
+while has_tail:
+  tail = df.tail(1).iloc[0]
+  if bZdUtils.safe_str_to_int(tail['NAME'], tail['NAME']) == bZdUtils.safe_str_to_int(tail['NAME']):
+    df = df.iloc[:-1]
+  else:
+    has_tail = False
+    
 raw_data_sheet = "blendus synced raw"
 
 # 1. Clean up previous test runs
