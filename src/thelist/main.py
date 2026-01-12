@@ -9,10 +9,16 @@ import sys
 import bZdUtils
 from natsort import natsorted
 
+include_og = False # reserved for future fixing of my own fuckups
+
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
 sh = gc.open('@inhumantouch')
 wks = sh.worksheet_by_title('blendus synced pretty')
+if include_og:
+  ogwks = sh.worksheet_by_title('blendus og')
+  ogdf = ogwks.get_as_df(has_header=True)
+  og_rem_ladies = ogdf.iloc[2:]
 
 # Efficient Read
 # This reads the whole sheet into a pandas dataframe in one go. 
@@ -200,7 +206,7 @@ for name, loc_lady in loc_ladies.items():
   rem_lady = df.loc[named]
   # if remote record does not already exist, add new row to the gsheet
   if rem_lady.empty:
-    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'hbd': '', 'died': '', 'age': '', 'irl': 'N', 'img': loc_lady['img'], 'gif': loc_lady['img'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'webp': loc_lady['webp'], 'avif': loc_lady['avif'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     # verify addition of new remote lady to dataframe
     named = df['NAME'] == name
@@ -208,9 +214,10 @@ for name, loc_lady in loc_ladies.items():
     REMOTE_LADIES_CHANGED['REMOTE LADIES ADDED'][name] = rem_lady['NAME']
   else:
     rem_lady = rem_lady.iloc[0]
-    
-  # print('REMOTE:', name, rem_lady)
-  # print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
+    rem_lady.drop(columns=['hbd', 'img'])
+
+  #print('REMOTE:', name, rem_lady)
+  #print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
 
   if rem_lady['Image Folder?'] == 'Y':
     loc_lady['psf'] = loc_lady['psd'] + loc_lady['psb']
@@ -236,13 +243,14 @@ for name, loc_lady in loc_ladies.items():
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['blendus?'] = maxBlendus
     
-    cols = ['img', 'gif', 'jpg', 'png', 'webp', 'avif']
+    cols = ['img', 'gif', 'jpg', 'png']
     
     # for col in cols:
     #   df.loc[named, col] = int(rem_lady[col]) if rem_lady[col] else 0
     
     imgs = 0
     for col in cols:
+      #print (name, col)
       if col != 'img':
         imgs += loc_lady[col]
         if rem_lady[col] != loc_lady[col]:
@@ -267,31 +275,72 @@ for name, loc_lady in loc_ladies.items():
       df.loc[named, 'subs'] = loc_subs
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['subs'] = loc_subs 
-
-print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
-
+    
 print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
 for i, rem_lady in rem_ladies.iterrows():
+  name = rem_lady['NAME']
+  
+  if include_og:
+    ognamed = ogdf['NAME'] == name
+    og_rem_lady = ogdf.loc[ognamed]
+    
+    if not og_rem_lady.empty:
+      named = df['NAME'] == name
 
-  if rem_lady['Image Folder?'] == 'Y' and name not in loc_ladies:
-    ladyPath = ladiesPath + name
-    try:
-      os.mkdir(ladyPath) # Creates a single directory
-      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = ladyPath     
-    except FileExistsError:
-      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'LOCAL FOLDER ALREADY EXISTS: {ladyPath}'
-    except PermissionError:
-      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER: {ladyPath}'
-    except Exception as e:
-      LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'ERROR ATTEMPTING TO CREATE LOCAL FOLDER: {name}\n{e}'
+      og_cols = ['insta', 'youtube', 'imdb', 'listal', 'wikipedia', 'bandcamp', 'spotify', 'url', 'blended with…' ]
+      for og_col in og_cols:
+        df.loc[named, og_col] = ''
 
+      og_rem_lady = og_rem_lady.iloc[0]
+      for og_col in og_cols:
+        if len(og_rem_lady[og_col]) > 0:
+          df.loc[named, og_col] = og_rem_lady[og_col]
+      rem_lady = df.loc[named].iloc[0]
+  
+  if rem_lady['Image Folder?'] == 'Y':
+    if name not in loc_ladies:
+      ladyPath = ladiesPath + name
+      try:
+        os.mkdir(ladyPath) # Creates a single directory
+        LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = ladyPath     
+      except FileExistsError:
+        LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'LOCAL FOLDER ALREADY EXISTS: {ladyPath}'
+      except PermissionError:
+        LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER: {ladyPath}'
+      except Exception as e:
+        LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][name] = f'ERROR ATTEMPTING TO CREATE LOCAL FOLDER: {name}\n{e}'
+  else:
+    named = df['NAME'] == name
+    changed = False
+    if not rem_lady['Image Folder?'].strip():  
+      df.loc[named, 'Image Folder?'] = 'N'
+      df.loc[named, 'irl'] = 'N'
+      changed = True
+    
+    if not rem_lady['blendus?'].strip():  
+      df.loc[named, 'blendus?'] = 'N'
+      changed = True
+
+    if rem_lady['Image Folder?'] != 'Y':
+      df.loc[named, 'gif'] = 0
+      df.loc[named, 'jpg'] = 0
+      df.loc[named, 'png'] = 0
+      df.loc[named, 'subs'] = 0
+      changed = True
+
+    if changed:
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][name]['(re)initialized'] = "with missing default column data."     
+
+print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
 print(json.dumps(LOCAL_LADIES_CHANGED, indent=2, default=str))
 
 # Handling NaNs
 # Google Sheets API throws errors if you try to upload NaN/Infinity. 
 # You MUST replace them with empty strings or zeros.
 df = df.fillna('') 
+#FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
 
 # Date Formatting: Pandas sometimes converts dates to timestamps that look ugly in Sheets. Convert date columns to strings in Python before uploading to preserve the format.
 #df['date'] = df['date'].astype(str)
@@ -308,9 +357,12 @@ while has_tail:
     df = df.iloc[:-1]
   else:
     has_tail = False
-    
+
+df = df.drop(columns=['hbd', 'age', 'img'])
+
 raw_data_sheet = "blendus synced raw"
 
+#sys.exit(df)
 # 1. Clean up previous test runs
 # Try to find the sheet and delete it so we start fresh
 try:
