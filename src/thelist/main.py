@@ -9,7 +9,7 @@ import sys
 import bZdUtils
 from natsort import natsorted
 
-include_og = False # reserved for future fixing of my own fuckups
+include_og = False # reserved for future fixing of my own fuckups (retrieves data from original manually updated sheet)
 
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
@@ -27,6 +27,16 @@ df = wks.get_as_df(has_header=True)
 df = df.dropna(subset=['NAME'])
 
 dicTotals = df.iloc[0]
+
+df['whaddayado'] = (
+  df['whaddayado']
+  .fillna('')     
+  .str.strip()
+  .str.split(r'\s*[,/]\s*')
+  .apply(lambda x: [] if x == [''] else x)
+  .str.join(', ')
+)
+
 rem_ladies = df.iloc[1:]
 
 print("\n\n", 'READING THE ROOM!', "\n\n")
@@ -278,6 +288,8 @@ for name, loc_lady in loc_ladies.items():
     
 print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
+whaddayalldo = {}
+
 for i, rem_lady in rem_ladies.iterrows():
   name = rem_lady['NAME']
   
@@ -297,7 +309,14 @@ for i, rem_lady in rem_ladies.iterrows():
         if len(og_rem_lady[og_col]) > 0:
           df.loc[named, og_col] = og_rem_lady[og_col]
       rem_lady = df.loc[named].iloc[0]
-  
+      
+  if rem_lady['whaddayado'].strip():    
+    rawccupados = re.split(r',\s', rem_lady['whaddayado'])
+    occupados = [x for x in rawccupados if x]
+    for occupado in occupados:
+      whaddayalldo = bZdUtils.add_key_val_pair_if_needed(whaddayalldo, occupado, 0)
+      whaddayalldo[occupado] += 1
+      
   if rem_lady['Image Folder?'] == 'Y':
     if name not in loc_ladies:
       ladyPath = ladiesPath + name
@@ -323,11 +342,11 @@ for i, rem_lady in rem_ladies.iterrows():
       changed = True
 
     if rem_lady['Image Folder?'] != 'Y':
-      df.loc[named, 'gif'] = 0
-      df.loc[named, 'jpg'] = 0
-      df.loc[named, 'png'] = 0
-      df.loc[named, 'subs'] = 0
-      changed = True
+      zerosums = ['gif', 'jpg', 'png', 'subs']
+      for zerosum in zerosums:
+        if not str(rem_lady[zerosum]).strip():  
+          df.loc[named, zerosum] = 0
+          changed = True
 
     if changed:
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], name, {})
@@ -335,6 +354,14 @@ for i, rem_lady in rem_ladies.iterrows():
 
 print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
 print(json.dumps(LOCAL_LADIES_CHANGED, indent=2, default=str))
+
+print('whaddayalldo by title')
+alpha_sorted = dict(sorted(whaddayalldo.items()))
+print(json.dumps(alpha_sorted, indent=2, default=str))
+
+print('whaddayalldo by frequency')
+complex_sorted = dict(sorted(whaddayalldo.items(), key=lambda item: (-item[1], item[0])))
+print(json.dumps(complex_sorted, indent=2, default=str))
 
 # Handling NaNs
 # Google Sheets API throws errors if you try to upload NaN/Infinity. 
