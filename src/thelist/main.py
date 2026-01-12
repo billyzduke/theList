@@ -2,9 +2,10 @@ import pandas as pd
 import pygsheets
 import numpy as np
 import json
+import macos_tags
 import os
 import re
-#import sys
+import sys
 import bZdUtils
 from natsort import natsorted
 
@@ -30,6 +31,9 @@ print(f"inhumantouch blendus gsheet contains {len(rem_ladies)} ladies\n")
 moa_ladies = {}
 ladiesPath = '/Volumes/Moana/Images/Ladies/'
 
+REMOTE_LADIES_CHANGED = {'REMOTE LADIES ADDED': {}, 'REMOTE LADIES UPDATED': {}}
+LOCAL_LADIES_CHANGED = {'LOCAL LADIES ADDED': {}, 'LOCAL LADIES DELETED': {}, 'LOCAL LADIES NOTED': {}, 'LOCAL LADIES UPDATED': {}}
+
 # gather relevant info from local drive
 for root, subs, imgs in os.walk(ladiesPath):
   # disregard the root directory
@@ -50,58 +54,134 @@ for root, subs, imgs in os.walk(ladiesPath):
           # proceed
           
           # name = name.encode().decode('utf-8')    
-          moa_ladies[name] = {'img': 0, 'gif': 0, 'jpg': 0, 'jpeg': 0, 'png': 0, 'psd': [], 'psb': [], 'avif': 0, 'webp': 0, 'subs': subs}
+          moa_ladies[name] = {'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 'psd': [], 'psb': [], 'subs': subs, 'vids': []}
           
           # annoying but apparently necessary, even though I cannot even see these where they are supposedly showing up
           imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store')
-            
+          #print(imgs)   
+
           # count and sort image files by ext/type 
           for i in imgs:
-            moa_ladies[name]['img'] += 1
-            
-            isGif = re.compile(r'\.gif$')
-            m = isGif.search(i)
-            if m:
-              moa_ladies[name]['gif'] += 1
+            name_ext = bZdUtils.get_file_ext(i)            
+            is_img = ['avif', 'bmp', 'gif', 'jpg', 'jpeg', 'png', 'psd', 'psb', 'tiff', 'webp']
+            if name_ext['ext'] in is_img:
+              file_at_path = root + '/' + i
 
-            isJpg = re.compile(r'\.jpg$')
-            m = isJpg.search(i)
-            if m:
-              moa_ladies[name]['jpg'] += 1
+              # eliminate all 4 letter .jpeg extensions because i hate them
+              if name_ext['ext'] == 'jpeg':
+                j = root + '/' + name_ext['name'] + '.jpg'
+                #print(j)
+                os.replace(file_at_path, j)
+                
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], name, {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name], 'jpeg -> jpg', [])
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name]['jpeg -> jpg'].append(j)     
+                #print(json.dumps(LOCAL_LADIES_CHANGED, indent=2, default=str))
 
-            isJpeg = re.compile(r'\.jpeg$')
-            m = isJpeg.search(i)
-            if m:
-              moa_ladies[name]['jpg'] += 1
-              moa_ladies[name]['jpeg'] += 1
-            
-            isPng = re.compile(r'\.png$')
-            m = isPng.search(i)
-            if m:
-              moa_ladies[name]['png'] += 1
-              
-            isPsd = re.compile(r'\.psd$')
-            m = isPsd.search(i)
-            if m:
-              moa_ladies[name]['img'] -= 1
-              moa_ladies[name]['psd'].append(i)
+                file_at_path = j
+                name_ext = bZdUtils.get_file_ext(j)
+                if '/' in name_ext['name']:
+                  name_ext['name'] = os.path.basename(name_ext['name'])
 
-            isPsb = re.compile(r'\.psb$')
-            m = isPsb.search(i)
-            if m:
-              moa_ladies[name]['img'] -= 1
-              moa_ladies[name]['psb'].append(i)
+              moa_ladies[name]['img'] += 1
 
-            isAvif = re.compile(r'\.avif$')
-            m = isAvif.search(i)
-            if m:
-              moa_ladies[name]['avif'] += 1
+              if name_ext['ext'] in ['avif', 'bmp', 'gif', 'tiff']:
+                # all should become pngs
+                make_it_ping = 'png'
+                j = bZdUtils.safe_convert_image(file_at_path, make_it_ping)
+                file_ext = bZdUtils.get_file_ext(j)
+                if file_ext['ext'] == make_it_ping:
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], name, {})
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name], f'{name_ext['ext']} -> {make_it_ping}', [])
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name][f'{name_ext['ext']} -> {make_it_ping}'].append(j)     
+                  
+                  file_at_path = j
+                  name_ext = file_ext
+                  if '/' in name_ext['name']:
+                    name_ext['name'] = os.path.basename(name_ext['name'])
+                else:
+                  if not (file_at_path == j and file_ext['ext'] == 'gif'):
+                    sys.exit(f'There was a problem converting a {name_ext['ext']} to a {make_it_ping}: "{file_at_path}"')
 
-            isWebp = re.compile(r'\.webp$')
-            m = isWebp.search(i)
-            if m:
-              moa_ladies[name]['webp'] += 1
-      
+              if name_ext['ext'] == 'gif':
+                # there might be some animated ones we want to keep
+                moa_ladies[name][name_ext['ext']] += 1
+                            
+              if name_ext['ext'] == 'png':
+                moa_ladies[name][name_ext['ext']] += 1
+                
+              if name_ext['ext'] in ['psb', 'psd']:
+                moa_ladies[name]['img'] -= 1
+                moa_ladies[name][name_ext['ext']].append(i)
+
+              if name_ext['ext'] == 'webp':
+                # all should become jpgs
+                make_it_peg = 'jpg'
+                j = bZdUtils.safe_convert_image(file_at_path, make_it_peg)
+                file_ext = bZdUtils.get_file_ext(j)
+                if file_ext['ext'] == make_it_peg:
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], name, {})
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name], f'{name_ext['ext']} -> {make_it_peg}', [])
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name][f'{name_ext['ext']} -> {make_it_peg}'].append(j)     
+                  
+                  file_at_path = j
+                  name_ext = file_ext
+                  if '/' in name_ext['name']:
+                    name_ext['name'] = os.path.basename(name_ext['name'])
+                else:
+                  sys.exit(f'There was a problem converting a {name_ext['ext']} to a {make_it_peg}: "{file_at_path}"')
+                
+              if name_ext['ext'] == 'jpg':
+                moa_ladies[name][name_ext['ext']] += 1
+
+              if name_ext['ext'] != 'psb' and name_ext['ext'] != 'psd':
+                # add image pixel size dimensions to file name, because it just makes things easier for me
+                # and most of these will never change size, if they do, another upscaled version will be created
+                if '⊠' not in name_ext['name']:
+                  pixel_dims = bZdUtils.get_image_size(file_at_path)
+                  #print(file_at_path, pixel_dims)
+                  dims = str(pixel_dims['w']) + '⊠'
+                  if pixel_dims['h'] != pixel_dims['w']:
+                    dims += str(pixel_dims['h'])                
+                  j = root + '/' + name_ext['name'] + '-' + dims + '.' + name_ext['ext']
+                  os.replace(file_at_path, j)
+                
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], name, {})
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name], 'pixel dims added', [])
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name]['pixel dims added'].append(j)     
+                  
+                  file_at_path = j
+                  
+                file_tags = macos_tags.get_all(file_at_path)
+                tag_names = [t.name for t in file_tags]
+                #print(file_at_path, tag_names)
+                if "Unfit AMF" not in tag_names and "Yellow" not in tag_names and "Good 2 Go Girl!" not in tag_names:
+                  # while we're at it, let's tag the images relative to the 1024 pixel squared desired minimum for blending
+                  # yeah I know, it doesn't take into account how big the face is framed within the image, but it's a general rule of thumb that below 1024, shit is going to get useless fast regardless of how close-up it is
+                  try:
+                    # Try to access the variable
+                    pixel_dims
+                  except NameError:
+                    # If it doesn't exist, create it
+                    pixel_dims = bZdUtils.get_image_size(file_at_path)
+                  if pixel_dims['h'] < 1024 or pixel_dims['w'] < 1024:
+                    if pixel_dims['h'] < 1024 and pixel_dims['w'] < 1024: 
+                      tags_to_add = ["Unfit AMF"]
+                    else:
+                      tags_to_add = ["Yellow"]
+                  else:
+                    tags_to_add = ["Good 2 Go Girl!"]
+                  macos_tags.set_all(tags_to_add, file=file_at_path)
+                  
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], name, {})
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name], 'file tags updated', {})
+                  LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][name]['file tags updated'][file_at_path] = tags_to_add     
+            else:
+              moa_ladies[name]['vids'].append(i)
+              LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'], name, {})
+              LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][name], 'vids', [])
+              LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][name]['vids'].append(i)     
+
 loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
 # print(loc_ladies)
 
@@ -110,8 +190,6 @@ print(f"\nlocal Ladies image directory contains {len(loc_ladies)} ladies\n")
 # first, update the gsheet with local changes
 print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
-REMOTE_LADIES_CHANGED = {'REMOTE LADIES ADDED': {}, 'REMOTE LADIES UPDATED': {}}
-LOCAL_LADIES_CHANGED = {'LOCAL LADIES ADDED': {}, 'LOCAL LADIES DELETED': {}}
 
 # loop thru local ladies
 for name, loc_lady in loc_ladies.items():
@@ -135,14 +213,15 @@ for name, loc_lady in loc_ladies.items():
   # print('LOCAL:', name, lady, "\n") # copy and paste name from here if mismatch due to special characters
 
   if rem_lady['Image Folder?'] == 'Y':
-    if len(loc_lady['psd']):
+    loc_lady['psf'] = loc_lady['psd'] + loc_lady['psb']
+    if len(loc_lady['psf']):
       maxBlendus = 0
-      for psd in loc_lady['psd']:
+      for psf in loc_lady['psf']:
         isBlendus = re.compile(r'^blendus-')
-        m = isBlendus.search(psd)
+        m = isBlendus.search(psf)
         if m:
           blenDims = re.compile(r'[\d]{3,4}')
-          m = blenDims.search(psd)
+          m = blenDims.search(psf)
           blendus = int(m.group())
           if blendus > maxBlendus:
             maxBlendus = blendus

@@ -12,6 +12,7 @@ dependencies = [
     "macos-tags (>=1.5.1,<2.0.0)",
     "pygsheets (>=2.0.6,<3.0.0)",
     "pandas (>=2.3.3,<3.0.0)",
+    "pillow (>=12.1.0,<13.0.0)",
 ]
 
 [tool.poetry]
