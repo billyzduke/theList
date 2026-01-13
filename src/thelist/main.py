@@ -216,7 +216,7 @@ for name, loc_lady in loc_ladies.items():
   rem_lady = df.loc[named]
   # if remote record does not already exist, add new row to the gsheet
   if rem_lady.empty:
-    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     # verify addition of new remote lady to dataframe
     named = df['NAME'] == name
@@ -225,10 +225,13 @@ for name, loc_lady in loc_ladies.items():
   else:
     rem_lady = rem_lady.iloc[0]
     rem_lady.drop(columns=['hbd', 'img'])
+    df.loc[named, 'Image Folder?'] = 'Y'
 
   #print('REMOTE:', name, rem_lady)
-  #print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
-
+  # if name.startswith("Bj"):
+  #   print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
+  #   sys.exit()
+    
   if rem_lady['Image Folder?'] == 'Y':
     loc_lady['psf'] = loc_lady['psd'] + loc_lady['psb']
     if len(loc_lady['psf']):
@@ -385,7 +388,7 @@ while has_tail:
   else:
     has_tail = False
 
-df = df.drop(columns=['hbd', 'age', 'img'])
+df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 
 raw_data_sheet = "blendus synced raw"
 
@@ -423,6 +426,7 @@ print("\n\n", 'SYNC COMPLETE!')
 #   'Image Folder?': 1390,
 #   'blendus?': 54,
 #   'whaddayado': '',
+#   'aka/alias/group': '',
 #   'known as/for': '',
 #   'origin': '',
 #   'born': 2,
