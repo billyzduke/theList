@@ -11,8 +11,8 @@ var BLENDED_WITH = {
     'ROW_START': 3
   }
 }
-var OCCUPOD = {
-  'HEADER_NAME': "whaddayado",
+var ARTIST = {
+  'HEADER_NAME': "aka/artist"
 }
 
 // --- 1. ONOPEN (Now Auto-Syncs) ---
@@ -36,27 +36,12 @@ function onEdit(e) {
   // Logic for manual edits 
   if (name === BLENDED_WITH.PRETTY.SHEET_NAME) {
 
-    // Check if we are editing the "Tags" column (e.g. Column 4 / D)
-    var occupodCol = getColumnIndexByName(sheet, OCCUPOD.HEADER_NAME);
-    if (cell.getColumn() === occupodCol) { 
-      
-      // Wait 1 second to let the Formula update the Config list
-      Utilities.sleep(1000); 
-      
-      // Re-set the value to itself to force Sheets to re-evaluate the formatting
-      var val = cell.getValue();
-      cell.setValue(val);
-      return;
-    }
-
     var blendedCol = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
     // If column not found, or the edited cell isn't in that column, stop.
     if (blendedCol === -1 || cell.getColumn() !== blendedCol) {
       return;
     }
 
-
-  
     // 3. Ignore Header Rows (assuming data starts Row 3)
     if (cell.getRow() < BLENDED_WITH.PRETTY.ROW_START) return;
     
@@ -77,6 +62,7 @@ function onEdit(e) {
     updateReciprocalLinks(cell, selfValue, selectedValue, blendedCol);
 
     applyLinksToRange(cell);
+    highlightChipDuplicates(sheet);
 
   } else {
     if (name != "blendus") {
@@ -168,7 +154,8 @@ function syncFromRaw(silent) {
   // 3. Paste and Link
   targetRange.setValues(rawValues);
   applyLinksToRange(targetRange);
-  
+  highlightChipDuplicates(targetSheet);
+
   // Only show the alert if this was a manual menu click
   if (!isSilent) {
     SpreadsheetApp.getUi().alert("Synced " + rawValues.length + " rows from Raw Sheet.");
@@ -407,3 +394,108 @@ function findBrokenLinks() {
     SpreadsheetApp.getUi().alert("✅ All links are reciprocal and valid!");
   }
 }
+
+/**
+ * CHIP-ONLY DUPLICATE HIGHLIGHTER
+ * Only runs on complex columns where native Conditional Formatting fails.
+ */
+function highlightChipDuplicates(sheet) {
+  // --- CONFIGURATION ---
+  var DUPE_CONFIG = [
+    { 
+      colIndex: getColumnIndexByName(sheet, ARTIST.HEADER_NAME),       // Column E (The Chip Column)
+      color: "#bfdfcc"  
+    }
+    // If you ever have another CHIP column, add it here:
+    // { colIndex: 8, color: "#FFF2CC" }
+  ];
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow < BLENDED_WITH.PRETTY.ROW_START) return;
+
+  DUPE_CONFIG.forEach(function(rule) {
+    var colIndex = rule.colIndex;
+    var highlightColor = rule.color;
+    
+    var range = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, colIndex, lastRow - BLENDED_WITH.PRETTY.ROW_START + 1, 1);
+    var values = range.getValues();
+    
+    // 1. Build Frequency Map
+    var chipCounts = {};
+
+    for (var i = 0; i < values.length; i++) {
+      var cellVal = values[i][0].toString();
+      if (cellVal === "") continue;
+
+      // Split by comma to count individual chips
+      var chips = cellVal.split(",").map(function(s) { return s.trim(); });
+
+      chips.forEach(function(chip) {
+        if (chip === "") return;
+        var cleanChip = chip; // Add .toLowerCase() here if you want case-insensitive
+        
+        if (!chipCounts[cleanChip]) {
+          chipCounts[cleanChip] = 0;
+        }
+        chipCounts[cleanChip]++;
+      });
+    }
+
+    // 2. Apply Colors
+    var newBackgrounds = [];
+
+    for (var i = 0; i < values.length; i++) {
+      var cellVal = values[i][0].toString();
+      var isDupe = false;
+
+      if (cellVal !== "") {
+        var chips = cellVal.split(",").map(function(s) { return s.trim(); });
+        
+        for (var j = 0; j < chips.length; j++) {
+          if (chipCounts[chips[j]] > 1) {
+            isDupe = true;
+            break; 
+          }
+        }
+      }
+      newBackgrounds.push([ isDupe ? highlightColor : null ]);
+    }
+
+    range.setBackgrounds(newBackgrounds);
+  });
+}
+
+
+/**
+ * ============================================================================
+ * PROJECT: BLENDUS SYNC & LINK SYSTEM
+ * ============================================================================
+ * * 1. CONFIGURATION (Top of file)
+ * - Controls Sheet Names, Column Headers, and Import Settings.
+ * - To change the target column, change 'HEADER_NAME'.
+ * * 2. SYNC FROM RAW (syncFromRaw)
+ * - Imports data from the 'RAW' sheet to the 'PRETTY' sheet.
+ * - Fixes the "Missing Apostrophe" bug by escaping values.
+ * - Auto-runs on Sheet Open (Silent Mode).
+ * - Can be run manually from the "Link Tools" menu.
+ * * 3. RECIPROCAL LINKING (onEdit -> updateReciprocalLinks)
+ * - If you add "Björk" to "The Sugarcubes" row, this script finds "Björk"s row
+ * and automatically adds "The Sugarcubes" to it.
+ * - Prevents self-linking errors.
+ * * 4. HYPERLINKER (applyLinksToRange)
+ * - Converts names inside the 'Blended With' column into clickable links
+ * that jump to that person's specific row in Column A.
+ * - Handles comma-separated lists (Multiple links per cell).
+ * * 5. SOCIAL MEDIA URLs (onEdit -> Path B)
+ * - Converts various incomplete URL data (Instagram, YouTube, etc.) in Cols 19-24 into functioning hyperlinks.
+ * * 6. DUPLICATE HIGHLIGHTER (highlightChipDuplicates)
+ * - Replaces Conditional Formatting for speed.
+ * - Scans Column E. If a "Chip" (Band Member) appears in more than one row,
+ * highlights all occurrences in RED.
+ * - Handles Multi-Select chips ("Band A, Band B").
+ * * 7. AUDIT TOOL (findBrokenLinks)
+ * - "Link Tools > Find Broken Links"
+ * - Scans the whole sheet for One-Way blend links (A links to B, B ignores A).
+ * - Generates a popup report of specific errors.
+ * ============================================================================
+ */
