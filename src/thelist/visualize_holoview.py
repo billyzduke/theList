@@ -8,9 +8,13 @@ import time
 hv.extension('bokeh')
 
 # --- CONFIG ---
+list_path = '/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList'
+data_path = 'data'
+vis_path = 'visualizations'
 timestamp = int(time.time())
-output_file = f'chord_{timestamp}.html'
+vis_file = f'chord_{timestamp}.html'
 csv_file = 'blend-data.csv'
+csv_file_path = os.path.join(list_path, data_path, csv_file)# Make sure this matches your filename
 
 # --- CLEANER ---
 def clean_string(s):
@@ -22,11 +26,11 @@ def clean_string(s):
   return s.strip()
 
 # 1. Load & Clean
-if not os.path.exists(csv_file):
+if not os.path.exists(csv_file_path):
   print("Error: blend-data.csv not found.")
   exit()
 
-df = pd.read_csv(csv_file)
+df = pd.read_csv(csv_file_path)
 df['Source'] = df['Source'].apply(clean_string)
 df['Target'] = df['Target'].apply(clean_string)
 
@@ -86,17 +90,19 @@ chord.opts(
 )
 
 # 6. SAVE
-print(f"Saving to {output_file}...")
-hv.save(chord, output_file, resources='inline')
+vis_file_path = os.path.join(list_path, vis_path, vis_file)
+
+print(f"Saving to {vis_file_path}...")
+hv.save(chord, vis_file_path, resources='inline')
 
 # 7. BACKGROUND FIX
-with open(output_file, 'r', encoding='utf-8') as f:
+with open(vis_file_path, 'r', encoding='utf-8') as f:
   html_content = f.read()
 
 style_injection = '<body style="background-color: #000000; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh;">'
 html_content = html_content.replace('<body>', style_injection)
 
-with open(output_file, 'w', encoding='utf-8') as f:
+with open(vis_file_path, 'w', encoding='utf-8') as f:
   f.write(html_content)
 
-print(f"Done! Open {output_file}")
+print(f"Done! Open {vis_file_path}")

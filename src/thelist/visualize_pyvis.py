@@ -3,12 +3,17 @@ from pyvis.network import Network
 import os
 
 # 1. Load your Data
-csv_file = 'blend-data.csv'  # Make sure this matches your filename
-if not os.path.exists(csv_file):
-  print(f"Error: Could not find {csv_file}")
+list_path = '/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList'
+data_path = 'data'
+vis_path = 'visualizations'
+csv_file = 'blend-data.csv'
+csv_file_path = os.path.join(list_path, data_path, csv_file)# Make sure this matches your filename
+
+if not os.path.exists(csv_file_path):
+  print(f"Error: Could not find {csv_file_path}")
   exit()
 
-df = pd.read_csv(csv_file)
+df = pd.read_csv(csv_file_path)
 
 # 2. Initialize the Graph
 # height='100vh' means "Full Screen Height"
@@ -60,14 +65,15 @@ var options = {
 """)
 
 # 5. Generate and Open
-output_file = 'network_graph.html'
-net.save_graph(output_file)
-print(f"Graph saved to {output_file}. Opening now...")
+vis_file = 'network_graph.html'
+vis_file_path = os.path.join(list_path, vis_path, vis_file)
+net.save_graph(vis_file)
+print(f"Graph saved to {vis_file}. Opening now...")
 
 # Try to open automatically (Mac/Windows/Linux compatible)
 try:
-    os.startfile(output_file)
+    os.startfile(vis_file)
 except AttributeError:
   # MacOS/Linux fallback
   import subprocess
-  subprocess.call(['open', output_file])
+  subprocess.call(['open', vis_file])

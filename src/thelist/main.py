@@ -6,6 +6,7 @@ import macos_tags
 import os
 import re
 import sys
+import time
 import bZdUtils
 from natsort import natsorted
 
@@ -397,6 +398,17 @@ while has_tail:
     has_tail = False
 
 raw_data_sheet = "blendus synced raw"
+
+# 2. Generate a filename with Year-Month-Day-Time
+# Example: backups/data_snapshot_20260115-143022.csv
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+backup_filename = f"blendus_synced_raw_{timestamp}.csv"
+backup_path = os.path.join('/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList/backups', backup_filename)
+
+# 3. Save locally
+print(f"Creating safety backup: {backup_path}...")
+df.to_csv(backup_path, index=False)
+# --- SAFETY BACKUP END ---
 
 #sys.exit(df)
 # 1. Clean up previous test runs
