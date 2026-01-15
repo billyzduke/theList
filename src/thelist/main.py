@@ -36,6 +36,7 @@ df['whaddayado'] = (
   .apply(lambda x: [] if x == [''] else x)
   .str.join(', ')
 )
+df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 
 rem_ladies = df.iloc[1:]
 
@@ -216,6 +217,13 @@ for name, loc_lady in loc_ladies.items():
   rem_lady = df.loc[named]
   # if remote record does not already exist, add new row to the gsheet
   if rem_lady.empty:
+    duplicates = df[df.index.duplicated()]
+    if not duplicates.empty():
+      print(name)
+      print(loc_lady)
+      print(duplicates)
+      sys.exit()
+      
     new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     # verify addition of new remote lady to dataframe
@@ -387,8 +395,6 @@ while has_tail:
     df = df.iloc[:-1]
   else:
     has_tail = False
-
-df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 
 raw_data_sheet = "blendus synced raw"
 

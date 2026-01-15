@@ -21,6 +21,7 @@ function onOpen() {
     .createMenu('Link Tools')
     .addItem('Sync & Link "blended with…" (From Raw)', 'syncFromRaw') // Manual click = Not silent
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
+    .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
     .addToUi();
 
   // Automatically run the sync when the file loads
@@ -65,14 +66,7 @@ function onEdit(e) {
     highlightChipDuplicates(sheet);
 
   } else {
-    if (name != "blendus") {
-      var hexTest = new RegExp("^[A-F0-9]{6}$").test(e.value);
-      // console.info(hexTest);
-      if (hexTest) {
-        cell.setBackground('#' + e.value);
-        return; // STOP! Do not run the rest of the script.
-      }
-
+    if (name === "blendus og") {
       var column = cell.getColumn();
       // Logger.log(column);
       if (column == 19) {
@@ -118,6 +112,13 @@ function onEdit(e) {
           .build();
         cell.setRichTextValue(richValue);
       }
+    } else {
+      var hexTest = new RegExp("^[A-F0-9]{6}$").test(e.value);
+      // console.info(hexTest);
+      if (hexTest) {
+        cell.setBackground('#' + e.value);
+        return; // STOP! Do not run the rest of the script.
+      }
     }
   }
 }
@@ -150,6 +151,9 @@ function syncFromRaw(silent) {
   
   // 2. Define Target on Pretty Sheet (Col Y)
   var targetRange = targetSheet.getRange(BLENDED_WITH.PRETTY.ROW_START, blendedCol, rawValues.length, 1);
+
+  // Resets the background to default (white/transparent) to clear old audit warnings.
+  targetRange.setBackground(null);
   
   // 3. Paste and Link
   targetRange.setValues(rawValues);
@@ -463,6 +467,61 @@ function highlightChipDuplicates(sheet) {
 
     range.setBackgrounds(newBackgrounds);
   });
+}
+
+/**
+ * AUDIT: FIND ORPHANED ARTISTS
+ * Scans the sheet for rows that have an Artist (Col E) 
+ * but NO Blended connections (Target Col).
+ * useful for finding folders/pairs you skipped during manual entry.
+ */
+function findOrphanedArtists() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
+  // --- CONFIG ---
+  var NAME_COL_INDEX = 1;    // Column A (The Name)
+  var ARTIST_COL_INDEX = getColumnIndexByName(sheet, ARTIST.HEADER_NAME);  
+  var BLEND_COL_INDEX = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
+
+  var START_ROW = BLENDED_WITH.PRETTY.ROW_START;
+  // --------------
+
+  var lastRow = sheet.getLastRow();
+  var range = sheet.getRange(START_ROW, 1, lastRow - START_ROW + 1, Math.max(ARTIST_COL_INDEX, BLEND_COL_INDEX));
+  var values = range.getValues();
+  
+  var orphans = [];
+
+  for (var i = 0; i < values.length; i++) {
+    var rowData = values[i];
+    
+    // Arrays are 0-indexed, so Column A is index 0.
+    // We need to subtract 1 from the CONFIG indices.
+    var name = rowData[NAME_COL_INDEX - 1];
+    var artist = rowData[ARTIST_COL_INDEX - 1];
+    var blendData = rowData[BLEND_COL_INDEX - 1];
+
+    // LOGIC:
+    // 1. Must have a Name.
+    // 2. Must have an Artist (indicating it's a real entry, not a spacer).
+    // 3. Blend Column must be EMPTY (indicated skipped entry).
+    if (name && artist && (!blendData || blendData.toString().trim() === "")) {
+      orphans.push("Row " + (i + START_ROW) + ": " + name + " (" + artist + ")");
+    }
+  }
+
+  // Report Results
+  if (orphans.length > 0) {
+    var htmlOutput = HtmlService.createHtmlOutput(
+      "<style>body { font-family: sans-serif; }</style>" +
+      "<h3>Found " + orphans.length + " Orphaned Artists</h3>" +
+      "<p>These rows have an Artist listed but no Blend connections:</p>" +
+      "<ul><li>" + orphans.join("</li><li>") + "</li></ul>"
+    ).setWidth(400).setHeight(600);
+    
+    SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Orphan Report');
+  } else {
+    SpreadsheetApp.getUi().alert('Good news! Every row with an Artist has at least one Blend connection.');
+  }
 }
 
 
