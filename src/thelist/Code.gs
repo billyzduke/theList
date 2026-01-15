@@ -22,6 +22,8 @@ function onOpen() {
     .addItem('Sync & Link "blended with…" (From Raw)', 'syncFromRaw') // Manual click = Not silent
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
+    .addSeparator() // Optional: Adds a line to separate the Export tool
+    .addItem('Export for Gephi (.csv)', 'generateGephiExport')
     .addToUi();
 
   // Automatically run the sync when the file loads
@@ -524,6 +526,65 @@ function findOrphanedArtists() {
   }
 }
 
+
+/**
+ * EXPORT FOR GEPHI
+ * Creates a new sheet named "Gephi_Export" with a simple Source,Target list.
+ * Run this, then File > Download > CSV on the new sheet.
+ */
+function generateGephiExport() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
+  
+  // --- CONFIG ---
+  var NAME_COL_INDEX = 1;    // Column A
+  var BLEND_COL_INDEX = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
+  var START_ROW = BLENDED_WITH.PRETTY.ROW_START;
+  // --------------
+
+  var lastRow = sheet.getLastRow();
+  var data = sheet.getRange(START_ROW, 1, lastRow - START_ROW + 1, Math.max(NAME_COL_INDEX, BLEND_COL_INDEX)).getValues();
+  
+  var exportRows = [["Source", "Target", "Type"]]; // Header for Gephi
+  var seenPairs = new Set();
+
+  for (var i = 0; i < data.length; i++) {
+    var source = data[i][NAME_COL_INDEX - 1].toString().trim();
+    var targetsRaw = data[i][BLEND_COL_INDEX - 1].toString();
+
+    if (source && targetsRaw) {
+      var targets = targetsRaw.split(",");
+      
+      targets.forEach(function(target) {
+        var t = target.trim();
+        if (t !== "") {
+          // Create a unique key (A|B) sorting them ensures A->B and B->A are treated as one link
+          var pairKey = [source, t].sort().join("|");
+          
+          // Only add if we haven't seen this connection yet
+          if (!seenPairs.has(pairKey)) {
+            exportRows.push([source, t, "Undirected"]);
+            seenPairs.add(pairKey);
+          }
+        }
+      });
+    }
+  }
+
+  // Create or Overwrite the Export Sheet
+  var exportSheetName = "blend-data";
+  var exportSheet = ss.getSheetByName(exportSheetName);
+  if (exportSheet) {
+    exportSheet.clear();
+  } else {
+    exportSheet = ss.insertSheet(exportSheetName);
+  }
+
+  // Paste Data
+  exportSheet.getRange(1, 1, exportRows.length, 3).setValues(exportRows);
+  
+  SpreadsheetApp.getUi().alert("Export Ready! Go to the 'Gephi_Export' tab and select File > Download > Comma Separated Values (.csv).");
+}
 
 /**
  * ============================================================================
