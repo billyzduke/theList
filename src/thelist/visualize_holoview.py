@@ -1,7 +1,7 @@
 import pandas as pd
 import holoviews as hv
 from holoviews import opts
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, CustomJS  # <--- Added CustomJS
 import unicodedata
 import os
 import time
@@ -15,7 +15,7 @@ vis_path = 'visualizations'
 timestamp = time.strftime("%Y%m%d-%H%M%S")
 vis_file = f'chord_{timestamp}.html'
 csv_file = 'blend-data.csv'
-csv_file_path = os.path.join(list_path, data_path, csv_file)# Make sure this matches your filename
+csv_file_path = os.path.join(list_path, data_path, csv_file)
 
 # --- CLEANER ---
 def clean_string(s):
@@ -26,15 +26,16 @@ def clean_string(s):
   s = s.replace("’", "'").replace("‘", "'")
   return s.strip()
 
-# --- HOOK: Fix Background & Sync ALL Data ---
+## --- HOOK: Sync Data & Sync Highlights (The "Nuclear" Fix) ---
 def hook(plot, element):
     # 1. Fix the Background
     plot.state.border_fill_color = '#181818'
     plot.state.outline_line_color = None 
     
-    # 2. Smuggle Data into the Labels
+    # 2. Find components
     graph_renderer = None
     text_renderer = None
+    hover_tool = None
     
     for r in plot.state.renderers:
         if hasattr(r, 'glyph') and hasattr(r.glyph, 'text'):
@@ -42,16 +43,43 @@ def hook(plot, element):
         if hasattr(r, 'node_renderer'):
             graph_renderer = r
             
-    if text_renderer and graph_renderer:
-        node_data = graph_renderer.node_renderer.data_source.data
-        text_data = text_renderer.data_source.data
+    for t in plot.state.tools:
+        if isinstance(t, HoverTool):
+            hover_tool = t
+
+    if text_renderer and graph_renderer and hover_tool:
+        # --- PART A: Data Smuggling ---
+        node_source = graph_renderer.node_renderer.data_source
+        text_source = text_renderer.data_source
         
-        # We loop through the columns we want to sync
-        # Added 'name' to this list so the label knows its own name!
         for col in ['popularity', 'partners_list', 'name']:
-            if col in node_data:
-                text_data[col] = node_data[col]
-                
+            if col in node_source.data:
+                text_source.data[col] = node_source.data[col]
+        
+        # --- PART B: The Javascript Linker ---
+        # We force the graph to update by hitting every 'change' signal we can find.
+        code = """
+            const indices = cb_data.index.indices;
+            const node_renderer = graph_renderer.node_renderer;
+            const node_ds = node_renderer.data_source;
+            
+            // 1. Update the inspection
+            if (indices.length > 0) {
+                node_ds.inspected.indices = indices;
+                node_renderer.inspected.indices = indices;
+            } else {
+                node_ds.inspected.indices = [];
+                node_renderer.inspected.indices = [];
+            }
+            
+            // 2. THE NUCLEAR OPTION: Fire signals on everything
+            node_ds.change.emit();
+            node_renderer.change.emit();
+            graph_renderer.change.emit();
+        """
+        
+        hover_tool.callback = CustomJS(args={'graph_renderer': graph_renderer}, code=code)
+        
 # 1. Load & Clean
 if not os.path.exists(csv_file_path):
   print("Error: blend-data.csv not found.")
@@ -67,27 +95,19 @@ targets = df['Target'].value_counts()
 degree_counts = sources.add(targets, fill_value=0).sort_values(ascending=False)
 sorted_names = degree_counts.index.tolist()
 
-# 3. BUILD PARTNER LISTS (The New Step)
-# We create a dictionary to hold the list of friends for every person
+# 3. BUILD PARTNER LISTS
 print("Aggregating partner lists...")
 adjacency = {name: [] for name in sorted_names}
 
 for _, row in df.iterrows():
   s, t = row['Source'], row['Target']
-  # Add Target to Source's list
-  if s in adjacency: 
-    adjacency[s].append(t)
-  # Add Source to Target's list (Undirected graph)
-  if t in adjacency: 
-    adjacency[t].append(s)
+  if s in adjacency: adjacency[s].append(t)
+  if t in adjacency: adjacency[t].append(s)
 
-# Create a formatted string for the tooltip
-# We join them with a comma and space
 partner_strings = []
 for name in sorted_names:
   partners = adjacency[name]
-  partners.sort() # Alphabetize the friend list
-  # formatting: "A, B, C"
+  partners.sort()
   p_str = ", ".join(partners)
   partner_strings.append(p_str)
 
@@ -97,7 +117,7 @@ nodes = pd.DataFrame({
   'name': sorted_names,
   'group': 1,
   'popularity': degree_counts.values, 
-  'partners_list': partner_strings  # <--- Add the list to the dataset
+  'partners_list': partner_strings
 })
 nodes_dataset = hv.Dataset(nodes, 'index', vdims=['name', 'popularity', 'partners_list'])
 
@@ -109,8 +129,7 @@ links['target_id'] = links['Target'].map(name_to_id)
 links['value'] = 1
 links_final = links[['source_id', 'target_id', 'value']]
 
-# 6. DEFINE CUSTOM TOOLTIP (HTML)
-# We use @name to pull from the column, @partners_list for the friends
+# 6. DEFINE TOOLTIP
 tooltips = """
 <div style="background-color:#333; color:#eee; padding:10px; border-radius:5px; border:1px solid #555; min-width:150px; max-width:300px;">
     <span style="font-size: 16px; font-weight: bold; color: #fff;">@name</span>
@@ -123,48 +142,44 @@ tooltips = """
 """
 hover = HoverTool(tooltips=tooltips)
 
-print(f"Generating diagram with Partner Popups...")
+print(f"Generating Interactive Chord Diagram...")
 
 # 7. RENDER
 chord = hv.Chord((links_final, nodes_dataset))
 
 chord.opts(
   opts.Chord(
-    # Use our custom hover tool
     tools=[hover],
-    hooks=[hook], 
-    # --- PALETTE: INFERNO (Black -> Red -> Yellow) ---
+    hooks=[hook],
+    
+    # Aesthetics
     cmap='Inferno',          
     node_color='popularity', 
-    
-    # --- LINES ---
     edge_color='source',   
     edge_cmap='Inferno',      
     edge_line_width=2,    
-    edge_alpha=0.4,       # Higher visibility
+    edge_alpha=0.4,       
     
-    # --- INTERACTION & SIZE ---
-    node_size=6,              # <--- THE FIX (Prevents overlap)
-    node_hover_fill_color='white', # confirm selection
+    # Size & Interaction
+    node_size=6,              
+    node_hover_fill_color='white', 
     
-    # --- LABELS ---
     labels='name',      
     label_text_font_size='9pt', 
     label_text_color='#999999', 
     
     width=1100,          
     height=1100,
-    bgcolor='#333333',
+    bgcolor='#333333'
   )
 )
 
-# 7. SAVE
+# 8. SAVE
 vis_file_path = os.path.join(list_path, vis_path, vis_file)
-
 print(f"Saving to {vis_file_path}...")
 hv.save(chord, vis_file_path, resources='inline')
 
-# 7. BACKGROUND FIX
+# 9. BACKGROUND FIX
 with open(vis_file_path, 'r', encoding='utf-8') as f:
   html_content = f.read()
 

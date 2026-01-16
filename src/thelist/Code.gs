@@ -23,7 +23,9 @@ function onOpen() {
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
     .addSeparator() // Optional: Adds a line to separate the Export tool
-    .addItem('Export for Gephi (.csv)', 'generateGephiExport')
+    .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
+    .addSeparator() 
+    .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
     .addToUi();
 
   // Automatically run the sync when the file loads
@@ -529,10 +531,10 @@ function findOrphanedArtists() {
 
 /**
  * EXPORT FOR GEPHI
- * Creates a new sheet named "Gephi_Export" with a simple Source,Target list.
+ * Creates a new sheet named "blend-data" with a simple Source,Target list.
  * Run this, then File > Download > CSV on the new sheet.
  */
-function generateGephiExport() {
+function generateBlendDataExport() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
   
@@ -583,7 +585,146 @@ function generateGephiExport() {
   // Paste Data
   exportSheet.getRange(1, 1, exportRows.length, 3).setValues(exportRows);
   
-  SpreadsheetApp.getUi().alert("Export Ready! Go to the 'Gephi_Export' tab and select File > Download > Comma Separated Values (.csv).");
+  SpreadsheetApp.getUi().alert("Export Ready! Go to the 'blend-data' sheet tab and select File > Download > Comma Separated Values (.csv).");
+}
+
+function setupBlendRegistry() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // --- CONFIGURATION ---
+  const SOURCE_SHEET_NAME = "blendus synced raw";
+  const TARGET_SHEET_NAME = "blends";
+  
+  // COLUMN INDICES (0-based)
+  const COL_NAME = 0;       // Column A: Name
+  const COL_OCCUPATION = 3; // Column D: Occupation
+  const COL_BLENDS = 22;    // Column W: The comma-separated list of partners
+  
+  // Keywords
+  const MUSIC_KEYWORDS = ["singer", "musician", "songwriter", "rapper", "vocalist", "band", "music"];
+  const ACTING_KEYWORDS = ["actress", "actor", "hollywood", "film", "tv", "star"];
+
+  // 1. GET DATA
+  const sourceSheet = ss.getSheetByName(SOURCE_SHEET_NAME);
+  if (!sourceSheet) {
+    SpreadsheetApp.getUi().alert(`Error: Could not find sheet '${SOURCE_SHEET_NAME}'.`);
+    return;
+  }
+  
+  const lastRow = sourceSheet.getLastRow();
+  // Fetch all data at once for speed
+  const data = sourceSheet.getRange(2, 1, lastRow - 1, sourceSheet.getLastColumn()).getValues();
+  
+  // 2. BUILD OCCUPATION MAP
+  // We need to know everyone's job before we can categorize their relationships
+  const occupationMap = new Map();
+  
+  data.forEach(row => {
+    const name = row[COL_NAME];
+    // Convert to string, lower case, handle blanks
+    const job = (row[COL_OCCUPATION] || "").toString().toLowerCase(); 
+    if (name) {
+      occupationMap.set(name.toString().trim(), job);
+    }
+  });
+
+  // 3. EXTRACT AND DEDUPLICATE BLENDS
+  const uniqueBlends = new Set();
+  const processedRows = []; // Will hold the final array for the sheet
+
+  data.forEach(row => {
+    const personA = (row[COL_NAME] || "").toString().trim();
+    const connectionsString = (row[COL_BLENDS] || "").toString();
+
+    if (!personA || !connectionsString) return;
+
+    // Split Col W by comma to find partners
+    const partners = connectionsString.split(",");
+
+    partners.forEach(p => {
+      const personB = p.trim();
+      if (!personB) return;
+
+      // DEDUPLICATION TRICK:
+      // Sort the names alphabetically so "Miley, Dua" and "Dua, Miley" 
+      // both generate the same key: "Dua Lipa|Miley Cyrus"
+      const pair = [personA, personB].sort();
+      const uniqueKey = pair.join("|");
+
+      // Only proceed if we haven't seen this pair yet
+      if (!uniqueBlends.has(uniqueKey)) {
+        uniqueBlends.add(uniqueKey);
+
+        // --- CLASSIFY THE GROUP ---
+        const jobA = occupationMap.get(personA) || "";
+        const jobB = occupationMap.get(personB) || "";
+        
+        let group = "Composite Portraits"; // Default
+
+        const isMusician = (job) => MUSIC_KEYWORDS.some(k => job.includes(k));
+        const isActor = (job) => ACTING_KEYWORDS.some(k => job.includes(k));
+
+        // Logic: Both must match the category
+        if (isMusician(jobA) && isMusician(jobB)) {
+          group = "Crossbred Songbirds";
+        } else if (isActor(jobA) && isActor(jobB)) {
+          group = "Folie à Deux";
+        }
+
+        // Format for the sheet: "Person A, Person B"
+        const blendees = `${pair[0]}, ${pair[1]}`;
+
+        // Add to our list
+        // [hexcode, blendees, blend_type, date, MJv, best, group, Quiz Hint]
+        processedRows.push(["", blendees, "", "", "", "", group, ""]);
+      }
+    });
+  });
+
+  // 4. WRITE TO TARGET SHEET
+  let targetSheet = ss.getSheetByName(TARGET_SHEET_NAME);
+  if (!targetSheet) {
+    targetSheet = ss.insertSheet(TARGET_SHEET_NAME);
+  }
+  
+  // Headers
+  if (targetSheet.getLastRow() === 0) {
+    const headers = [["hexcode", "blendees", "blend_type", "date", "MJv", "best", "group", "Quiz Hint"]];
+    targetSheet.getRange(1, 1, 1, headers[0].length).setValues(headers).setFontWeight("bold");
+    targetSheet.setFrozenRows(1);
+  }
+
+  // Append Data
+  if (processedRows.length > 0) {
+    const startRow = targetSheet.getLastRow() + 1;
+    targetSheet.getRange(startRow, 1, processedRows.length, processedRows[0].length).setValues(processedRows);
+  }
+
+  // 5. DATA VALIDATION & FORMATTING
+  const fullRangeRow = targetSheet.getLastRow();
+  if (fullRangeRow > 1) {
+    // Group Validation (Col 7 / G)
+    const groupRange = targetSheet.getRange(2, 7, fullRangeRow - 1, 1);
+    const groupRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["Composite Portraits", "Folie à Deux", "Crossbred Songbirds"], true)
+      .setAllowInvalid(false)
+      .build();
+    groupRange.setDataValidation(groupRule);
+
+    // Best Validation (Col 6 / F)
+    const bestRange = targetSheet.getRange(2, 6, fullRangeRow - 1, 1);
+    const bestRule = SpreadsheetApp.newDataValidation()
+      .requireNumberBetween(7, 13)
+      .setAllowInvalid(false)
+      .build();
+    bestRange.setDataValidation(bestRule);
+  }
+  
+  targetSheet.setColumnWidth(1, 80);
+  targetSheet.setColumnWidth(2, 250);
+  targetSheet.setColumnWidth(7, 160);
+
+  SpreadsheetApp.getUi().alert(`Processed ${data.length} rows. Found ${processedRows.length} unique blends.`);
 }
 
 /**
