@@ -68,3 +68,14 @@ def clean_filenames(root_path, dry_run=True):
                         print(f"[ERROR] Could not rename {filename}: {e}")
 
     print("-" * 60)
+    if matches_found == 0:
+        print("No files found requiring updates.")
+    else:
+        print(f"Scan complete. {matches_found} files {'identified' if dry_run else 'processed'}.")
+
+# --- CONFIGURATION ---
+target_dir = '/Volumes/Moana/Dropbox/inhumantouch.art/'
+
+# 1. Run with dry_run=True first to verify the list.
+# 2. Change to dry_run=False to apply the changes.
+clean_filenames(target_dir, dry_run=True)
