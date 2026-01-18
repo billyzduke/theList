@@ -119,6 +119,10 @@ function onEdit(e) {
         cell.setRichTextValue(richValue);
       }
     } else {
+      if (name === 'blends') {
+        syncRegistryToPeople()
+      }
+
       var hexTest = new RegExp("^[A-F0-9]{6}$").test(e.value);
       // console.info(hexTest);
       if (hexTest) {
@@ -594,13 +598,13 @@ function setupBlendRegistry() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // --- CONFIGURATION ---
-  const SOURCE_SHEET_NAME = "blendus synced raw";
+  const SOURCE_SHEET_NAME = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);
   const TARGET_SHEET_NAME = "blends";
   
   // COLUMN INDICES (0-based)
   const COL_NAME = 0;       // Column A: Name
-  const COL_OCCUPATION = 3; // Column D: Occupation
-  const COL_BLENDS = 22;    // Column W: The comma-separated list of partners
+  const COL_OCCUPATION = getColumnIndexByName(SOURCE_SHEET_NAME, "whaddayado"); // Column E: Occupation
+  const COL_BLENDS = getColumnByName(SOURCE_SHEET_NAME, BLENDED_WITH.HEADER_NAME) - 1;  // Column X: The comma-separated list of partners
   
   // Keywords
   const MUSIC_KEYWORDS = ["singer", "musician", "songwriter", "rapper", "vocalist", "band", "music"];
@@ -788,6 +792,78 @@ function colorizeHexColumn() {
   // Apply changes in one batch (much faster than loop)
   range.setBackgrounds(backgrounds);
   range.setFontColors(fontColors);
+}
+
+/**
+ * REVERSE SYNC: Reads the 'blends' Registry and updates 
+ * the 'blended with' column (Col W) in the Raw sheet.
+ */
+function syncRegistryToPeople() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rawSheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);  
+  const regSheet = ss.getSheetByName("blends");
+
+  if (!regSheet || !rawSheet) {
+    SpreadsheetApp.getUi().alert("Error: Missing sheets.");
+    return;
+  }
+ 
+  // CONFIGURATION
+  // Registry: Column C has "Name 1, Name 2, Name 3"
+  const REG_BLENDEES_COL = 2; // (0-based index for Column C)
+  
+  // People Sheet: 
+  const RAW_TARGET_COL = getColumnByName(rawSheet, BLENDED_WITH.HEADER_NAME) - 1;; // The "Blended With" column to update
+
+  // 1. READ THE REGISTRY
+  const regData = regSheet.getRange(2, 1, regSheet.getLastRow()-1, regSheet.getLastColumn()).getValues();
+  
+  // 2. BUILD THE MAP (Person -> Set of Partners)
+  const connections = {}; // Object to hold sets: { "Miley": Set("Dua", "Halsey"), ... }
+
+  regData.forEach(row => {
+    const blendString = row[REG_BLENDEES_COL].toString();
+    if (!blendString) return;
+
+    // Split "Miley, Dua, Halsey" into an array
+    const participants = blendString.split(",").map(p => p.trim()).filter(p => p);
+
+    // For every participant, add everyone else in this group as a partner
+    participants.forEach(person => {
+      if (!connections[person]) {
+        connections[person] = new Set();
+      }
+      
+      participants.forEach(partner => {
+        if (person !== partner) {
+          connections[person].add(partner);
+        }
+      });
+    });
+  });
+
+  // 3. UPDATE THE PEOPLE SHEET
+  const peopleData = rawSheet.getRange(2, 1, rawSheet.getLastRow()-1, 1).getValues(); // Get Names
+  const outputValues = [];
+
+  peopleData.forEach(row => {
+    const name = row[0].toString().trim();
+    
+    if (connections[name]) {
+      // Convert Set to Array, Sort it, Join with commas
+      const sortedPartners = Array.from(connections[name]).sort().join(", ");
+      outputValues.push([sortedPartners]);
+    } else {
+      // No blends found for this person
+      outputValues.push([""]);
+    }
+  });
+
+  // 4. WRITE BACK TO COLUMN W
+  // We overwrite the entire column to ensure it's perfectly in sync
+  rawSheet.getRange(2, RAW_TARGET_COL + 1, outputValues.length, 1).setValues(outputValues);
+
+  // SpreadsheetApp.getUi().alert("Sync Complete: Column W has been updated from the Registry.");
 }
 
 /**
