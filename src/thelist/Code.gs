@@ -18,7 +18,7 @@ var ARTIST = {
 // --- 1. ONOPEN (Now Auto-Syncs) ---
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('Link Tools')
+    .createMenu('inhumantools')
     .addItem('Sync & Link "blended with…" (From Raw)', 'syncFromRaw') // Manual click = Not silent
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
@@ -26,11 +26,13 @@ function onOpen() {
     .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
     .addSeparator() 
     .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
+    .addItem('Refresh Hex Colors', 'colorizeHexColumn')
     .addToUi();
 
-  // Automatically run the sync when the file loads
+  // Run automatically on load
   // We pass 'true' to enable Silent Mode (no popup alerts)
   syncFromRaw(true);
+  colorizeHexColumn();
 }
 
 function onEdit(e) {
@@ -725,6 +727,67 @@ function setupBlendRegistry() {
   targetSheet.setColumnWidth(7, 160);
 
   SpreadsheetApp.getUi().alert(`Processed ${data.length} rows. Found ${processedRows.length} unique blends.`);
+}
+
+/**
+ * Scans Column A of the 'blends' sheet.
+ * Sets background to the hex code value.
+ * Sets text color to Black or White based on contrast.
+ */
+function colorizeHexColumn() {
+  const SHEET_NAME = 'blends';
+  const HEX_COL_INDEX = 1; // Column A
+  const START_ROW = 3;     // Skip header
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  
+  if (!sheet) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < START_ROW) return;
+
+  // Get all hex codes in one batch for speed
+  const range = sheet.getRange(START_ROW, HEX_COL_INDEX, lastRow - START_ROW + 1, 1);
+  const values = range.getValues();
+  
+  const backgrounds = [];
+  const fontColors = [];
+
+  for (let i = 0; i < values.length; i++) {
+    let hex = values[i][0].toString().trim();
+    
+    // Check if it looks like a valid 6-digit hex code (A1B2C3)
+    // We allow it with or without the '#' prefix
+    const cleanHex = hex.replace('#', '');
+    
+    if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+      // 1. Set Background (needs # prefix)
+      backgrounds.push([`#${cleanHex}`]);
+      
+      // 2. Calculate Contrast (YIQ Formula)
+      // Extract RGB values
+      const r = parseInt(cleanHex.substr(0, 2), 16);
+      const g = parseInt(cleanHex.substr(2, 2), 16);
+      const b = parseInt(cleanHex.substr(4, 2), 16);
+      
+      // Calculate luminance (perceived brightness)
+      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+      
+      // Threshold: 128 is the standard halfway point
+      // If bright (>=128), text is black. If dark (<128), text is white.
+      fontColors.push([yiq >= 128 ? 'black' : 'white']);
+      
+    } else {
+      // If invalid/empty, reset to white background/black text
+      backgrounds.push([null]); 
+      fontColors.push(['black']);
+    }
+  }
+
+  // Apply changes in one batch (much faster than loop)
+  range.setBackgrounds(backgrounds);
+  range.setFontColors(fontColors);
 }
 
 /**
