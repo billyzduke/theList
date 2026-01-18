@@ -35,6 +35,17 @@ function onOpen() {
   colorizeHexColumn();
 }
 
+function onChangeTrigger(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  
+  // Only run if we are touching the 'blends' registry
+  if (sheet.getName() !== "blends") return;
+
+  // Run the sync
+  syncRegistryToPeople();
+}
+
 function onEdit(e) {
   var cell = e.range;
   var sheet = cell.getSheet();
@@ -795,75 +806,84 @@ function colorizeHexColumn() {
 }
 
 /**
- * REVERSE SYNC: Reads the 'blends' Registry and updates 
- * the 'blended with' column (Col W) in the Raw sheet.
+ * REVERSE SYNC: Reads 'blends' Registry -> Updates 'blendus synced raw'.
+ * USES DYNAMIC COLUMN HEADERS.
  */
 function syncRegistryToPeople() {
+  const REGISTRY_SHEET_NAME = "blends"
+  const REGISTRY_BLENDEES_HEADER = "blendees"; 
+  const NAME_HEADER = "NAME";  
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rawSheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);  
-  const regSheet = ss.getSheetByName("blends");
+  const regSheet = ss.getSheetByName(REGISTRY_SHEET_NAME);
 
   if (!regSheet || !rawSheet) {
-    SpreadsheetApp.getUi().alert("Error: Missing sheets.");
+    console.error("Sync Error: Missing sheets.");
+    return;
+  }  
+
+  // 1. DYNAMICALLY FIND COLUMN INDEXES
+  const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
+  const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
+
+  const regBlendColIdx = regHeaders.indexOf(REGISTRY_BLENDEES_HEADER);
+  const rawNameColIdx = rawHeaders.indexOf(NAME_HEADER);
+  const rawTargetColIdx = rawHeaders.indexOf(BLENDED_WITH.HEADER_NAME);
+
+  // Safety Check: Did we find all headers?
+  if (regBlendColIdx === -1 || rawNameColIdx === -1 || rawTargetColIdx === -1) {
+    const missing = [];
+    if (regBlendColIdx === -1) missing.push(`'${REGISTRY_BLENDEES_HEADER}' in ${REGISTRY_SHEET_NAME}`);
+    if (rawNameColIdx === -1) missing.push(`'${NAME_HEADER}' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
+    if (rawTargetColIdx === -1) missing.push(`'${BLENDED_WITH.HEADER_NAME}' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
+    SpreadsheetApp.getUi().alert(`Error: Could not find headers: ${missing.join(", ")}`);
     return;
   }
- 
-  // CONFIGURATION
-  // Registry: Column C has "Name 1, Name 2, Name 3"
-  const REG_BLENDEES_COL = 2; // (0-based index for Column C)
-  
-  // People Sheet: 
-  const RAW_TARGET_COL = getColumnByName(rawSheet, BLENDED_WITH.HEADER_NAME) - 1;; // The "Blended With" column to update
 
-  // 1. READ THE REGISTRY
-  const regData = regSheet.getRange(2, 1, regSheet.getLastRow()-1, regSheet.getLastColumn()).getValues();
+  // 2. READ REGISTRY & BUILD MAP
+  // Get all data (skip header row)
+  const regData = regSheet.getRange(2, 1, regSheet.getLastRow() - 1, regSheet.getLastColumn()).getValues();
   
-  // 2. BUILD THE MAP (Person -> Set of Partners)
-  const connections = {}; // Object to hold sets: { "Miley": Set("Dua", "Halsey"), ... }
+  const connections = {}; // { "Miley Cyrus": Set("Dua", "Halsey") }
 
   regData.forEach(row => {
-    const blendString = row[REG_BLENDEES_COL].toString();
+    const blendString = row[regBlendColIdx]; // Dynamic access
     if (!blendString) return;
 
-    // Split "Miley, Dua, Halsey" into an array
-    const participants = blendString.split(",").map(p => p.trim()).filter(p => p);
+    // Split "Miley, Dua" -> ["Miley", "Dua"]
+    const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
 
-    // For every participant, add everyone else in this group as a partner
+    // Cross-link everyone
     participants.forEach(person => {
-      if (!connections[person]) {
-        connections[person] = new Set();
-      }
+      if (!connections[person]) connections[person] = new Set();
       
       participants.forEach(partner => {
-        if (person !== partner) {
-          connections[person].add(partner);
-        }
+        if (person !== partner) connections[person].add(partner);
       });
     });
   });
 
-  // 3. UPDATE THE PEOPLE SHEET
-  const peopleData = rawSheet.getRange(2, 1, rawSheet.getLastRow()-1, 1).getValues(); // Get Names
+  // 3. UPDATE PEOPLE SHEET
+  const peopleData = rawSheet.getRange(2, 1, rawSheet.getLastRow() - 1, rawSheet.getLastColumn()).getValues();
   const outputValues = [];
 
   peopleData.forEach(row => {
-    const name = row[0].toString().trim();
+    const name = row[rawNameColIdx].toString().trim(); // Dynamic access
     
     if (connections[name]) {
-      // Convert Set to Array, Sort it, Join with commas
       const sortedPartners = Array.from(connections[name]).sort().join(", ");
       outputValues.push([sortedPartners]);
     } else {
-      // No blends found for this person
-      outputValues.push([""]);
+      outputValues.push([""]); // Clear if no blends
     }
   });
 
-  // 4. WRITE BACK TO COLUMN W
-  // We overwrite the entire column to ensure it's perfectly in sync
-  rawSheet.getRange(2, RAW_TARGET_COL + 1, outputValues.length, 1).setValues(outputValues);
-
-  // SpreadsheetApp.getUi().alert("Sync Complete: Column W has been updated from the Registry.");
+  // 4. WRITE BACK
+  // We write to the specific target column (index + 1 for 1-based setRange)
+  rawSheet.getRange(2, rawTargetColIdx + 1, outputValues.length, 1).setValues(outputValues);
+  
+  // Optional: Log status
+  console.log("Sync Complete.");
 }
 
 /**
