@@ -2,30 +2,68 @@ var BLENDED_WITH = {
   'HEADER_NAME': "blended with…",
   'RAW': {
     'SHEET_NAME': "blendus synced raw",
-    'COL': 0,
-    'ROW_START': 2
+    'WITH_COL': 0,
+    'DATA_START_ROW': 2
   },
-  'PRETTY':{
+  'PRETTY': {
     'SHEET_NAME': "blendus synced pretty",
-    'COL': 0,
-    'ROW_START': 3
+    'WITH_COL': 0,
+    'DATA_START_ROW': 3
+  },
+  'OG': {
+    'SHEET_NAME': "blendus og"
+  },
+  'REGISTRY': {
+    'SHEET_NAME': "blends",
+    'WITH_COL_NAME': "blendees",
+    'DATA_START_ROW': 3
   }
 }
 var ARTIST = {
   'HEADER_NAME': "aka/artist"
 }
 
-// --- 1. ONOPEN (Now Auto-Syncs) ---
+function getBlendedWithColumnByName(sheet, headerName) {
+  /**
+   * Finds the "blended with" column number by its header name (in Row 1).
+   * CHECKS THE GLOBAL VARIABLE FIRST TO SEE IF A POSITIVE INTEGER VALUE HAS ALREADY BEEN SET
+   * Returns -1 if not found.
+   */
+  var sheetName = sheet.getName();
+  if (sheetName.endsWith("raw")) {
+    if (!BLENDED_WITH.RAW.COL || BLENDED_WITH.RAW.COL < 0) BLENDED_WITH.RAW.COL = getColumnIndexByName(sheet, headerName)
+    return BLENDED_WITH.RAW.COL
+  }
+  if (sheetName.endsWith("pretty")) {
+    if (!BLENDED_WITH.PRETTY.COL || BLENDED_WITH.PRETTY.COL < 0) BLENDED_WITH.PRETTY.COL = getColumnIndexByName(sheet, headerName)
+    return BLENDED_WITH.PRETTY.COL
+  }
+}
+
+function getColumnIndexByName(sheet, headerName) {
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return -1;
+  
+  // Grab all headers in Row 1
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  
+  // Find the index of the name (indexOf returns 0-based index, so we add 1)
+  var index = headers.indexOf(headerName);
+
+  return index !== -1 ? index + 1 : -1;
+}
+
 function onOpen() {
+  // --- 1. ONOPEN (Now Auto-Syncs) ---
   SpreadsheetApp.getUi()
     .createMenu('inhumantools')
-    .addItem('Sync & Link "blended with…" (From Raw)', 'syncFromRaw') // Manual click = Not silent
+    .addItem('Sync & Link "blended with…" (From Raw to Pretty)', 'syncFromRaw') // Manual click = Not silent
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
     .addSeparator() // Optional: Adds a line to separate the Export tool
     .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
     .addSeparator() 
-    .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
+    // .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
     .addItem('Refresh Hex Colors', 'colorizeHexColumn')
     .addToUi();
 
@@ -40,7 +78,7 @@ function onChangeTrigger(e) {
   const sheet = ss.getActiveSheet();
   
   // Only run if we are touching the 'blends' registry
-  if (sheet.getName() !== "blends") return;
+  if (sheet.getName() !== BLENDED_WITH.REGISTRY.SHEET_NAME) return;
 
   // Run the sync
   syncRegistryToPeople();
@@ -54,14 +92,14 @@ function onEdit(e) {
   // Logic for manual edits 
   if (name === BLENDED_WITH.PRETTY.SHEET_NAME) {
 
-    var blendedCol = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
+    var blendedCol = getBlendedWithColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
     // If column not found, or the edited cell isn't in that column, stop.
     if (blendedCol === -1 || cell.getColumn() !== blendedCol) {
       return;
     }
 
     // 3. Ignore Header Rows (assuming data starts Row 3)
-    if (cell.getRow() < BLENDED_WITH.PRETTY.ROW_START) return;
+    if (cell.getRow() < BLENDED_WITH.PRETTY.DATA_START_ROW) return;
     
     // Get the value in Column A for this specific row
     var selfValue = sheet.getRange(cell.getRow(), 1).getValue().toString().trim();
@@ -75,7 +113,7 @@ function onEdit(e) {
       return; // Stop: Don't create links
     }
 
-    // *** RECIPROCAL LINKIFY ***
+    // *** RECIPROCAL LINKIFICATION ***
     // We run this BEFORE linkifying the current cell, so both happen smoothly.
     updateReciprocalLinks(cell, selfValue, selectedValue, blendedCol);
 
@@ -83,7 +121,7 @@ function onEdit(e) {
     highlightChipDuplicates(sheet);
 
   } else {
-    if (name === "blendus og") {
+    if (name === BLENDED_WITH.OG.SHEET_NAME) { // THE ORIGINAL MANUALLY EDITED SHEET, NOW WELL OUT OF DATE
       var column = cell.getColumn();
       // Logger.log(column);
       if (column == 19) {
@@ -130,9 +168,9 @@ function onEdit(e) {
         cell.setRichTextValue(richValue);
       }
     } else {
-      if (name === 'blends') {
-        syncRegistryToPeople()
-      }
+      // if (name === BLENDED_WITH.REGISTRY.SHEET_NAME) {
+      //   syncRegistryToPeople()
+      // }
 
       var hexTest = new RegExp("^[A-F0-9]{6}$").test(e.value);
       // console.info(hexTest);
@@ -144,8 +182,8 @@ function onEdit(e) {
   }
 }
 
-// --- 2. UPDATED SYNC FUNCTION (With Silent Mode & Row 2 Fix) ---
 function syncFromRaw(silent) {
+  // --- 2. UPDATED SYNC FUNCTION (With Silent Mode & Row 2 Fix) ---
   // Check if 'silent' was passed as true. If undefined (menu click), it is false.
   var isSilent = (silent === true);
 
@@ -158,20 +196,20 @@ function syncFromRaw(silent) {
     return;
   }
   
-  var rawCol = getColumnByName(sourceSheet, BLENDED_WITH.HEADER_NAME); 
-  var blendedCol = getColumnByName(targetSheet, BLENDED_WITH.HEADER_NAME); 
+  var rawCol = getBlendedWithColumnByName(sourceSheet, BLENDED_WITH.HEADER_NAME); 
+  var blendedCol = getBlendedWithColumnByName(targetSheet, BLENDED_WITH.HEADER_NAME); 
 
   var lastRowRaw = sourceSheet.getLastRow();
   // Math Fix: (lastRow - StartRow + 1) to capture the exact count
-  var totalRows = lastRowRaw - BLENDED_WITH.RAW.ROW_START + 1;
+  var totalRows = lastRowRaw - BLENDED_WITH.RAW.DATA_START_ROW + 1;
 
   if (totalRows < 1) return; // Nothing to sync
 
   // 1. Fetch from Raw Sheet (Using your Row 2 / Col 22 logic)
-  var rawValues = sourceSheet.getRange(BLENDED_WITH.RAW.ROW_START, rawCol, totalRows, 1).getValues();
+  var rawValues = sourceSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, rawCol, totalRows, 1).getValues();
   
   // 2. Define Target on Pretty Sheet (Col Y)
-  var targetRange = targetSheet.getRange(BLENDED_WITH.PRETTY.ROW_START, blendedCol, rawValues.length, 1);
+  var targetRange = targetSheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, blendedCol, rawValues.length, 1);
 
   // Resets the background to default (white/transparent) to clear old audit warnings.
   targetRange.setBackground(null);
@@ -187,16 +225,16 @@ function syncFromRaw(silent) {
   }
 }
 
-// --- 4. CORE LINKING LOGIC ---
 function applyLinksToRange(range) {
+  // --- 4. CORE LINKING LOGIC ---
   var sheet = range.getSheet();
   var values = range.getValues();
-  
   var lastRow = sheet.getLastRow();
+  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
   
   // *** FIXED LINE BELOW ***
   // We now TRIM the source values too, to prevent hidden spaces from breaking matches.
-  var sourceValues = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, 1, lastRow - (BLENDED_WITH.PRETTY.ROW_START - 1), 1).getValues().flat()
+  var sourceValues = sheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, NAME_COL_INDEX, lastRow - BLENDED_WITH.PRETTY.DATA_START_ROW + 1, 1).getValues().flat()
     .map(function(s) { return s.toString().trim(); });
     
   var sheetId = sheet.getSheetId();
@@ -227,7 +265,7 @@ function applyLinksToRange(range) {
       
       var sourceIndex = sourceValues.indexOf(tag);
       if (sourceIndex !== -1) {
-        var rowNum = sourceIndex + 3; 
+        var rowNum = sourceIndex + BLENDED_WITH.PRETTY.DATA_START_ROW; 
         var url = "#gid=" + sheetId + "&range=A" + rowNum;
         linkMap.push({ start: startIndex, end: endIndex, url: url });
       }
@@ -249,17 +287,17 @@ function applyLinksToRange(range) {
   // range.clearDataValidations();
 }
 
-/**
- * RECIPROCAL LINKING LOGIC
- * If Row A selects Row B, this function goes to Row B and selects Row A.
- */
 function updateReciprocalLinks(sourceRange, sourceName, targetNamesString, targetColIndex) {
+  /**
+   * RECIPROCAL LINKING LOGIC
+   * If Row A selects Row B, this function goes to Row B and selects Row A.
+   */
   var sheet = sourceRange.getSheet();
   var lastRow = sheet.getLastRow();
+  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
   
-  // 1. Get the list of all names in Col A to map names -> row numbers
-  //    (We rely on the Ghost List order or Raw order? We rely on Col A order)
-  var allNames = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, 1, lastRow - (BLENDED_WITH.PRETTY.ROW_START - 1), 1).getValues().flat().map(String);
+  // 1. Get the list of all names, map names -> row numbers
+  var allNames = sheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, NAME_COL_INDEX, lastRow - BLENDED_WITH.PRETTY.DATA_START_ROW + 1, 1).getValues().flat().map(String);
   
   // 2. Parse the target names (the ones just selected)
   if (!targetNamesString) return;
@@ -273,7 +311,7 @@ function updateReciprocalLinks(sourceRange, sourceName, targetNamesString, targe
     var targetIndex = allNames.indexOf(targetName);
     
     if (targetIndex !== -1) {
-      var targetRowNum = targetIndex + BLENDED_WITH.PRETTY.ROW_START; // +3 because data starts at A3
+      var targetRowNum = targetIndex + BLENDED_WITH.PRETTY.DATA_START_ROW; // +3 because data starts at A3
       
       // Don't update if it's the same row (sanity check)
       if (targetRowNum === sourceRange.getRow()) return;
@@ -306,58 +344,233 @@ function updateReciprocalLinks(sourceRange, sourceName, targetNamesString, targe
   });
 }
 
-/**
- * Finds the column number by its header name (in Row 1).
- * CHECKS THE GLOBAL VARIABLE FIRST TO SEE IF A POSITIVE INTEGER VALUE HAS ALREADY BEEN SET
- * Returns -1 if not found.
- */
-function getColumnByName(sheet, headerName) {
-  var sheetName = sheet.getName();
-  if (sheetName.endsWith("raw")) {
-    if (!BLENDED_WITH.RAW.COL || BLENDED_WITH.RAW.COL < 0) BLENDED_WITH.RAW.COL = getColumnIndexByName(sheet, headerName)
-    return BLENDED_WITH.RAW.COL
-  }
-  if (sheetName.endsWith("pretty")) {
-    if (!BLENDED_WITH.PRETTY.COL || BLENDED_WITH.PRETTY.COL < 0) BLENDED_WITH.PRETTY.COL = getColumnIndexByName(sheet, headerName)
-    return BLENDED_WITH.PRETTY.COL
-  }
+function highlightChipDuplicates(sheet) {
+  /**
+   * CHIP-ONLY DUPLICATE HIGHLIGHTER
+   * Only runs on complex columns where native Conditional Formatting fails.
+   */
+  var DUPE_CONFIG = [
+    { 
+      colIndex: getColumnIndexByName(sheet, ARTIST.HEADER_NAME),       // Column E (The Chip Column)
+      color: "#bfdfcc"  
+    }
+    // If you ever have another CHIP column, add it here:
+    // { colIndex: 8, color: "#FFF2CC" }
+  ];
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow < BLENDED_WITH.PRETTY.DATA_START_ROW) return;
+
+  DUPE_CONFIG.forEach(function(rule) {
+    var colIndex = rule.colIndex;
+    var highlightColor = rule.color;
+    
+    var range = sheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, colIndex, lastRow - BLENDED_WITH.PRETTY.DATA_START_ROW + 1, 1);
+    var values = range.getValues();
+    
+    // 1. Build Frequency Map
+    var chipCounts = {};
+
+    for (var i = 0; i < values.length; i++) {
+      var cellVal = values[i][0].toString();
+      if (cellVal === "") continue;
+
+      // Split by comma to count individual chips
+      var chips = cellVal.split(",").map(function(s) { return s.trim(); });
+
+      chips.forEach(function(chip) {
+        if (chip === "") return;
+        var cleanChip = chip; // Add .toLowerCase() here if you want case-insensitive
+        
+        if (!chipCounts[cleanChip]) {
+          chipCounts[cleanChip] = 0;
+        }
+        chipCounts[cleanChip]++;
+      });
+    }
+
+    // 2. Apply Colors
+    var newBackgrounds = [];
+
+    for (var i = 0; i < values.length; i++) {
+      var cellVal = values[i][0].toString();
+      var isDupe = false;
+
+      if (cellVal !== "") {
+        var chips = cellVal.split(",").map(function(s) { return s.trim(); });
+        
+        for (var j = 0; j < chips.length; j++) {
+          if (chipCounts[chips[j]] > 1) {
+            isDupe = true;
+            break; 
+          }
+        }
+      }
+      newBackgrounds.push([ isDupe ? highlightColor : null ]);
+    }
+
+    range.setBackgrounds(newBackgrounds);
+  });
 }
 
-function getColumnIndexByName(sheet, headerName) {
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) return -1;
-  
-  // Grab all headers in Row 1
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  
-  // Find the index of the name (indexOf returns 0-based index, so we add 1)
-  var index = headers.indexOf(headerName);
+function syncRegistryToPeople() {
+  /**
+   * REVERSE SYNC: Reads 'blends' Registry -> Updates 'blendus synced raw'.
+   * USES DYNAMIC COLUMN HEADERS.
+   */
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rawSheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);  
+  const regSheet = ss.getSheetByName(BLENDED_WITH.REGISTRY.SHEET_NAME);
 
-  return index !== -1 ? index + 1 : -1;
+  if (!regSheet || !rawSheet) {
+    console.error("Sync Error: Missing sheets.");
+    return;
+  }  
+
+  // 1. DYNAMICALLY FIND COLUMN INDEXES
+  const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
+  const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
+
+  const regBlendColIdx = regHeaders.indexOf(BLENDED_WITH.REGISTRY.WITH_COL_NAME);
+  const rawNameColIdx = rawHeaders.indexOf("NAME");
+  const rawTargetColIdx = rawHeaders.indexOf(BLENDED_WITH.HEADER_NAME);
+
+  // Safety Check: Did we find all headers?
+  if (regBlendColIdx === -1 || rawNameColIdx === -1 || rawTargetColIdx === -1) {
+    const missing = [];
+    if (regBlendColIdx === -1) missing.push(`'${BLENDED_WITH.REGISTRY.WITH_COL_NAME}' in ${BLENDED_WITH.REGISTRY.SHEET_NAME}`);
+    if (rawNameColIdx === -1) missing.push(`'NAME' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
+    if (rawTargetColIdx === -1) missing.push(`'${BLENDED_WITH.HEADER_NAME}' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
+    SpreadsheetApp.getUi().alert(`Error: Could not find headers: ${missing.join(", ")}`);
+    return;
+  }
+
+  // 2. READ REGISTRY & BUILD MAP
+  // Get all data (skip header row)
+  const regData = regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, 1, regSheet.getLastRow() - BLENDED_WITH.REGISTRY.DATA_START_ROW + 1, regSheet.getLastColumn()).getValues();
+  
+  const connections = {}; // { "Miley Cyrus": Set("Dua", "Halsey") }
+
+  regData.forEach(row => {
+    const blendString = row[regBlendColIdx]; // Dynamic access
+    if (!blendString) return;
+
+    // Split "Miley, Dua" -> ["Miley", "Dua"]
+    const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
+
+    // Cross-link everyone
+    participants.forEach(person => {
+      if (!connections[person]) connections[person] = new Set();
+      
+      participants.forEach(partner => {
+        if (person !== partner) connections[person].add(partner);
+      });
+    });
+  });
+
+  // 3. UPDATE PEOPLE SHEET
+  const peopleData = rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, rawSheet.getLastRow() - BLENDED_WITH.RAW.DATA_START_ROW + 1, rawSheet.getLastColumn()).getValues();
+  const outputValues = [];
+
+  peopleData.forEach(row => {
+    const name = row[rawNameColIdx].toString().trim(); // Dynamic access
+    
+    if (connections[name]) {
+      const sortedPartners = Array.from(connections[name]).sort().join(", ");
+      outputValues.push([sortedPartners]);
+    } else {
+      outputValues.push([""]); // Clear if no blends
+    }
+  });
+
+  // 4. WRITE BACK
+  // We write to the specific target column (index + 1 for 1-based setRange)
+  rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, rawTargetColIdx + 1, outputValues.length, 1).setValues(outputValues);
+  
+  // Optional: Log status
+  console.log("Sync Complete.");
 }
 
-/**
- * AUDIT FUNCTION
- * Scans Column 'Blended With'.
- * If Row A links to Row B, checks if Row B links back to Row A.
- * Highlights broken links in RED.
- */
+function colorizeHexColumn() {
+  /**
+   * Scans Column A of the 'blends' sheet.
+   * Sets background to the hex code value.
+   * Sets text color to Black or White based on contrast.
+   */
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(BLENDED_WITH.REGISTRY.SHEET_NAME);
+  if (!sheet) return;
+  const HEX_COL_INDEX = getColumnIndexByName(sheet, "hexcode"); // Column A
+  const START_ROW = BLENDED_WITH.REGISTRY.DATA_START_ROW;     // Skip header
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < START_ROW) return;
+
+  // Get all hex codes in one batch for speed
+  const range = sheet.getRange(START_ROW, HEX_COL_INDEX, lastRow - START_ROW + 1, 1);
+  const values = range.getValues();
+  
+  const backgrounds = [];
+  const fontColors = [];
+
+  for (let i = 0; i < values.length; i++) {
+    let hex = values[i][0].toString().trim();
+    
+    // Check if it looks like a valid 6-digit hex code (A1B2C3)
+    // We allow it with or without the '#' prefix
+    const cleanHex = hex.replace('#', '');
+    
+    if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+      // 1. Set Background (needs # prefix)
+      backgrounds.push([`#${cleanHex}`]);
+      
+      // 2. Calculate Contrast (YIQ Formula)
+      // Extract RGB values
+      const r = parseInt(cleanHex.substr(0, 2), 16);
+      const g = parseInt(cleanHex.substr(2, 2), 16);
+      const b = parseInt(cleanHex.substr(4, 2), 16);
+      
+      // Calculate luminance (perceived brightness)
+      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+      
+      // Threshold: 128 is the standard halfway point
+      // If bright (>=128), text is black. If dark (<128), text is white.
+      fontColors.push([yiq >= 128 ? 'black' : 'white']);
+      
+    } else {
+      // If invalid/empty, reset to white background/black text
+      backgrounds.push([null]); 
+      fontColors.push(['black']);
+    }
+  }
+
+  // Apply changes in one batch (much faster than loop)
+  range.setBackgrounds(backgrounds);
+  range.setFontColors(fontColors);
+}
+
 function findBrokenLinks() {
+  /**
+   * AUDIT FUNCTION
+   * Scans Column 'Blended With'.
+   * If Row A links to Row B, checks if Row B links back to Row A.
+   * Highlights broken links in RED.
+   */
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
+  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
   var lastRow = sheet.getLastRow();
   
-  var blendedCol = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME);
+  var blendedCol = getBlendedWithColumnByName(sheet, BLENDED_WITH.HEADER_NAME);
   if (blendedCol === -1) {
     SpreadsheetApp.getUi().alert("Column not found.");
     return;
   }
 
   // 1. Get Normalized Data
-  var nameValues = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, 1, lastRow - 2, 1)
-    .getValues().flat().map(function(s) { return s.toString().normalize("NFC"); });
+  var nameValues = sheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, NAME_COL_INDEX, lastRow - BLENDED_WITH.PRETTY.DATA_START_ROW + 1, 1).getValues().flat().map(function(s) { return s.toString().normalize("NFC"); });
 
-  var linkRange = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, blendedCol, lastRow - 2, 1);
+  var linkRange = sheet.getRange(BLENDED_WITH.PRETTY.DATA_START_ROW, blendedCol, lastRow - BLENDED_WITH.PRETTY.DATA_START_ROW + 1, 1);
   var linkValues = linkRange.getValues().flat().map(String);
   
   var backgrounds = [];
@@ -420,90 +633,19 @@ function findBrokenLinks() {
   }
 }
 
-/**
- * CHIP-ONLY DUPLICATE HIGHLIGHTER
- * Only runs on complex columns where native Conditional Formatting fails.
- */
-function highlightChipDuplicates(sheet) {
-  // --- CONFIGURATION ---
-  var DUPE_CONFIG = [
-    { 
-      colIndex: getColumnIndexByName(sheet, ARTIST.HEADER_NAME),       // Column E (The Chip Column)
-      color: "#bfdfcc"  
-    }
-    // If you ever have another CHIP column, add it here:
-    // { colIndex: 8, color: "#FFF2CC" }
-  ];
-  
-  var lastRow = sheet.getLastRow();
-  if (lastRow < BLENDED_WITH.PRETTY.ROW_START) return;
-
-  DUPE_CONFIG.forEach(function(rule) {
-    var colIndex = rule.colIndex;
-    var highlightColor = rule.color;
-    
-    var range = sheet.getRange(BLENDED_WITH.PRETTY.ROW_START, colIndex, lastRow - BLENDED_WITH.PRETTY.ROW_START + 1, 1);
-    var values = range.getValues();
-    
-    // 1. Build Frequency Map
-    var chipCounts = {};
-
-    for (var i = 0; i < values.length; i++) {
-      var cellVal = values[i][0].toString();
-      if (cellVal === "") continue;
-
-      // Split by comma to count individual chips
-      var chips = cellVal.split(",").map(function(s) { return s.trim(); });
-
-      chips.forEach(function(chip) {
-        if (chip === "") return;
-        var cleanChip = chip; // Add .toLowerCase() here if you want case-insensitive
-        
-        if (!chipCounts[cleanChip]) {
-          chipCounts[cleanChip] = 0;
-        }
-        chipCounts[cleanChip]++;
-      });
-    }
-
-    // 2. Apply Colors
-    var newBackgrounds = [];
-
-    for (var i = 0; i < values.length; i++) {
-      var cellVal = values[i][0].toString();
-      var isDupe = false;
-
-      if (cellVal !== "") {
-        var chips = cellVal.split(",").map(function(s) { return s.trim(); });
-        
-        for (var j = 0; j < chips.length; j++) {
-          if (chipCounts[chips[j]] > 1) {
-            isDupe = true;
-            break; 
-          }
-        }
-      }
-      newBackgrounds.push([ isDupe ? highlightColor : null ]);
-    }
-
-    range.setBackgrounds(newBackgrounds);
-  });
-}
-
-/**
- * AUDIT: FIND ORPHANED ARTISTS
- * Scans the sheet for rows that have an Artist (Col E) 
- * but NO Blended connections (Target Col).
- * useful for finding folders/pairs you skipped during manual entry.
- */
 function findOrphanedArtists() {
+  /**
+   * AUDIT: FIND ORPHANED ARTISTS
+   * Scans the sheet for rows that have an Artist (Col E) 
+   * but NO Blended connections (Target Col).
+   * useful for finding folders/pairs you skipped during manual entry.
+   */
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
-  // --- CONFIG ---
-  var NAME_COL_INDEX = 1;    // Column A (The Name)
+  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
   var ARTIST_COL_INDEX = getColumnIndexByName(sheet, ARTIST.HEADER_NAME);  
-  var BLEND_COL_INDEX = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
+  var BLEND_COL_INDEX = getBlendedWithColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
 
-  var START_ROW = BLENDED_WITH.PRETTY.ROW_START;
+  var START_ROW = BLENDED_WITH.PRETTY.DATA_START_ROW;
   // --------------
 
   var lastRow = sheet.getLastRow();
@@ -545,20 +687,131 @@ function findOrphanedArtists() {
   }
 }
 
+function createHashID(name, salt) {
+  /**
+   * HELPER: Computes 'x' + 5-char Hex Hash from a string.
+   * Matches Python's hashlib.md5(name.lower()).hexdigest()[:5].upper()
+   */
+  // Normalize: lowercase, trim. Append salt if > 0.
+  // Logic: "miley cyrus" or "miley cyrus_1"
+  let input = name.toLowerCase();
+  if (salt > 0) {
+    input += "_" + salt;
+  }
+  
+  // Compute MD5 Digest (Returns signed byte array)
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, input);
+  
+  // Convert Bytes to Hex String
+  let hexString = "";
+  for (let j = 0; j < digest.length; j++) {
+    let byteVal = digest[j];
+    if (byteVal < 0) byteVal += 256; // Handle Java's signed bytes
+    let byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) byteHex = "0" + byteHex; // Pad single digits
+    hexString += byteHex;
+  }
+  
+  // Format: x + first 5 chars + Uppercase
+  return "x" + hexString.substring(0, 5).toUpperCase();
+}
 
-/**
- * EXPORT FOR GEPHI
- * Creates a new sheet named "blend-data" with a simple Source,Target list.
- * Run this, then File > Download > CSV on the new sheet.
- */
+function generateMissingIDs() {
+  /**
+   * Generates unique IDs for the "blendus synced raw" sheet.
+   * Format: 'x' + 5 Hex Digits (e.g. xA1B2C)
+   * Source: Column B (Name)
+   * Target: Column A (ID)
+   */
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);
+  
+  if (!sheet) {
+    console.error("Sheet not found: " + BLENDED_WITH.RAW.SHEET_NAME);
+    return;
+  }
+  
+  // 1. CONFIGURATION
+  // Assuming headers are in Row 1. Data starts Row 2.
+  const ID_COL_INDEX = 1;   // Column A
+  // const NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return; // No data
+  
+  // Read Col A (IDs) and Col B (Names) in one batch
+  const range = sheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, ID_COL_INDEX, lastRow - BLENDED_WITH.RAW.DATA_START_ROW + 1, 2);
+  const data = range.getValues();
+  
+  // 2. MAP EXISTING IDs
+  // We need to know which IDs are already taken to avoid collisions
+  const usedIDs = new Set();
+  data.forEach(row => {
+    const id = row[0].toString().trim();
+    if (id !== "") {
+      usedIDs.add(id);
+    }
+  });
+  
+  const updates = []; // Will hold the new values for Column A
+  let newCount = 0;
+  
+  // 3. GENERATE MISSING IDs
+  for (let i = 0; i < data.length; i++) {
+    const currentID = data[i][0].toString().trim();
+    const name = data[i][1].toString().trim();
+    
+    // Case 1: ID already exists -> Keep it
+    if (currentID !== "") {
+      updates.push([currentID]);
+      continue;
+    }
+    
+    // Case 2: Name is empty -> No ID
+    if (name === "") {
+      updates.push([""]);
+      continue;
+    }
+    
+    // Case 3: Mint a new ID
+    let salt = 0;
+    let candidateID = createHashID(name, salt);
+    
+    // Collision Loop: If ID taken, increment salt and re-hash
+    while (usedIDs.has(candidateID)) {
+      salt++;
+      candidateID = createHashID(name, salt);
+    }
+    
+    usedIDs.add(candidateID); // Mark as used for future rows
+    updates.push([candidateID]);
+    newCount++;
+  }
+  
+  // 4. WRITE BACK
+  // We overwrite Column A with the updated list (preserving existing, filling new)
+  if (newCount > 0) {
+    sheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, ID_COL_INDEX, updates.length, 1).setValues(updates);
+    console.log(`Minted ${newCount} new IDs.`);
+    SpreadsheetApp.getUi().alert(`Minted ${newCount} new IDs.`);
+  } else {
+    console.log("No missing IDs found.");
+  }
+}
+
 function generateBlendDataExport() {
+  /**
+   * EXPORT BLEND DATA
+   * Creates a new sheet named "blend-data" with a simple Source,Target list.
+   * Run this, then File > Download > CSV on the new sheet.
+   */
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(BLENDED_WITH.PRETTY.SHEET_NAME);
   
   // --- CONFIG ---
-  var NAME_COL_INDEX = 1;    // Column A
-  var BLEND_COL_INDEX = getColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
-  var START_ROW = BLENDED_WITH.PRETTY.ROW_START;
+  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
+  var BLEND_COL_INDEX = getBlendedWithColumnByName(sheet, BLENDED_WITH.HEADER_NAME); 
+  var START_ROW = BLENDED_WITH.PRETTY.DATA_START_ROW;
   // --------------
 
   var lastRow = sheet.getLastRow();
@@ -610,12 +863,12 @@ function setupBlendRegistry() {
   
   // --- CONFIGURATION ---
   const SOURCE_SHEET_NAME = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);
-  const TARGET_SHEET_NAME = "blends";
+  const TARGET_SHEET_NAME = BLENDED_WITH.REGISTRY.SHEET_NAME;
   
   // COLUMN INDICES (0-based)
   const COL_NAME = 0;       // Column A: Name
   const COL_OCCUPATION = getColumnIndexByName(SOURCE_SHEET_NAME, "whaddayado"); // Column E: Occupation
-  const COL_BLENDS = getColumnByName(SOURCE_SHEET_NAME, BLENDED_WITH.HEADER_NAME) - 1;  // Column X: The comma-separated list of partners
+  const COL_BLENDS = getBlendedWithColumnByName(SOURCE_SHEET_NAME, BLENDED_WITH.HEADER_NAME) - 1;  // Column X: The comma-separated list of partners
   
   // Keywords
   const MUSIC_KEYWORDS = ["singer", "musician", "songwriter", "rapper", "vocalist", "band", "music"];
@@ -630,7 +883,7 @@ function setupBlendRegistry() {
   
   const lastRow = sourceSheet.getLastRow();
   // Fetch all data at once for speed
-  const data = sourceSheet.getRange(2, 1, lastRow - 1, sourceSheet.getLastColumn()).getValues();
+  const data = sourceSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, lastRow - BLENDED_WITH.RAW.DATA_START_ROW + 1, sourceSheet.getLastColumn()).getValues();
   
   // 2. BUILD OCCUPATION MAP
   // We need to know everyone's job before we can categorize their relationships
@@ -743,179 +996,3 @@ function setupBlendRegistry() {
 
   SpreadsheetApp.getUi().alert(`Processed ${data.length} rows. Found ${processedRows.length} unique blends.`);
 }
-
-/**
- * Scans Column A of the 'blends' sheet.
- * Sets background to the hex code value.
- * Sets text color to Black or White based on contrast.
- */
-function colorizeHexColumn() {
-  const SHEET_NAME = 'blends';
-  const HEX_COL_INDEX = 1; // Column A
-  const START_ROW = 3;     // Skip header
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME);
-  
-  if (!sheet) return;
-
-  const lastRow = sheet.getLastRow();
-  if (lastRow < START_ROW) return;
-
-  // Get all hex codes in one batch for speed
-  const range = sheet.getRange(START_ROW, HEX_COL_INDEX, lastRow - START_ROW + 1, 1);
-  const values = range.getValues();
-  
-  const backgrounds = [];
-  const fontColors = [];
-
-  for (let i = 0; i < values.length; i++) {
-    let hex = values[i][0].toString().trim();
-    
-    // Check if it looks like a valid 6-digit hex code (A1B2C3)
-    // We allow it with or without the '#' prefix
-    const cleanHex = hex.replace('#', '');
-    
-    if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
-      // 1. Set Background (needs # prefix)
-      backgrounds.push([`#${cleanHex}`]);
-      
-      // 2. Calculate Contrast (YIQ Formula)
-      // Extract RGB values
-      const r = parseInt(cleanHex.substr(0, 2), 16);
-      const g = parseInt(cleanHex.substr(2, 2), 16);
-      const b = parseInt(cleanHex.substr(4, 2), 16);
-      
-      // Calculate luminance (perceived brightness)
-      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-      
-      // Threshold: 128 is the standard halfway point
-      // If bright (>=128), text is black. If dark (<128), text is white.
-      fontColors.push([yiq >= 128 ? 'black' : 'white']);
-      
-    } else {
-      // If invalid/empty, reset to white background/black text
-      backgrounds.push([null]); 
-      fontColors.push(['black']);
-    }
-  }
-
-  // Apply changes in one batch (much faster than loop)
-  range.setBackgrounds(backgrounds);
-  range.setFontColors(fontColors);
-}
-
-/**
- * REVERSE SYNC: Reads 'blends' Registry -> Updates 'blendus synced raw'.
- * USES DYNAMIC COLUMN HEADERS.
- */
-function syncRegistryToPeople() {
-  const REGISTRY_SHEET_NAME = "blends"
-  const REGISTRY_BLENDEES_HEADER = "blendees"; 
-  const NAME_HEADER = "NAME";  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const rawSheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);  
-  const regSheet = ss.getSheetByName(REGISTRY_SHEET_NAME);
-
-  if (!regSheet || !rawSheet) {
-    console.error("Sync Error: Missing sheets.");
-    return;
-  }  
-
-  // 1. DYNAMICALLY FIND COLUMN INDEXES
-  const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
-  const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
-
-  const regBlendColIdx = regHeaders.indexOf(REGISTRY_BLENDEES_HEADER);
-  const rawNameColIdx = rawHeaders.indexOf(NAME_HEADER);
-  const rawTargetColIdx = rawHeaders.indexOf(BLENDED_WITH.HEADER_NAME);
-
-  // Safety Check: Did we find all headers?
-  if (regBlendColIdx === -1 || rawNameColIdx === -1 || rawTargetColIdx === -1) {
-    const missing = [];
-    if (regBlendColIdx === -1) missing.push(`'${REGISTRY_BLENDEES_HEADER}' in ${REGISTRY_SHEET_NAME}`);
-    if (rawNameColIdx === -1) missing.push(`'${NAME_HEADER}' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
-    if (rawTargetColIdx === -1) missing.push(`'${BLENDED_WITH.HEADER_NAME}' in ${BLENDED_WITH.RAW.SHEET_NAME}`);
-    SpreadsheetApp.getUi().alert(`Error: Could not find headers: ${missing.join(", ")}`);
-    return;
-  }
-
-  // 2. READ REGISTRY & BUILD MAP
-  // Get all data (skip header row)
-  const regData = regSheet.getRange(2, 1, regSheet.getLastRow() - 1, regSheet.getLastColumn()).getValues();
-  
-  const connections = {}; // { "Miley Cyrus": Set("Dua", "Halsey") }
-
-  regData.forEach(row => {
-    const blendString = row[regBlendColIdx]; // Dynamic access
-    if (!blendString) return;
-
-    // Split "Miley, Dua" -> ["Miley", "Dua"]
-    const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
-
-    // Cross-link everyone
-    participants.forEach(person => {
-      if (!connections[person]) connections[person] = new Set();
-      
-      participants.forEach(partner => {
-        if (person !== partner) connections[person].add(partner);
-      });
-    });
-  });
-
-  // 3. UPDATE PEOPLE SHEET
-  const peopleData = rawSheet.getRange(2, 1, rawSheet.getLastRow() - 1, rawSheet.getLastColumn()).getValues();
-  const outputValues = [];
-
-  peopleData.forEach(row => {
-    const name = row[rawNameColIdx].toString().trim(); // Dynamic access
-    
-    if (connections[name]) {
-      const sortedPartners = Array.from(connections[name]).sort().join(", ");
-      outputValues.push([sortedPartners]);
-    } else {
-      outputValues.push([""]); // Clear if no blends
-    }
-  });
-
-  // 4. WRITE BACK
-  // We write to the specific target column (index + 1 for 1-based setRange)
-  rawSheet.getRange(2, rawTargetColIdx + 1, outputValues.length, 1).setValues(outputValues);
-  
-  // Optional: Log status
-  console.log("Sync Complete.");
-}
-
-/**
- * ============================================================================
- * PROJECT: BLENDUS SYNC & LINK SYSTEM
- * ============================================================================
- * * 1. CONFIGURATION (Top of file)
- * - Controls Sheet Names, Column Headers, and Import Settings.
- * - To change the target column, change 'HEADER_NAME'.
- * * 2. SYNC FROM RAW (syncFromRaw)
- * - Imports data from the 'RAW' sheet to the 'PRETTY' sheet.
- * - Fixes the "Missing Apostrophe" bug by escaping values.
- * - Auto-runs on Sheet Open (Silent Mode).
- * - Can be run manually from the "Link Tools" menu.
- * * 3. RECIPROCAL LINKING (onEdit -> updateReciprocalLinks)
- * - If you add "Björk" to "The Sugarcubes" row, this script finds "Björk"s row
- * and automatically adds "The Sugarcubes" to it.
- * - Prevents self-linking errors.
- * * 4. HYPERLINKER (applyLinksToRange)
- * - Converts names inside the 'Blended With' column into clickable links
- * that jump to that person's specific row in Column A.
- * - Handles comma-separated lists (Multiple links per cell).
- * * 5. SOCIAL MEDIA URLs (onEdit -> Path B)
- * - Converts various incomplete URL data (Instagram, YouTube, etc.) in Cols 19-24 into functioning hyperlinks.
- * * 6. DUPLICATE HIGHLIGHTER (highlightChipDuplicates)
- * - Replaces Conditional Formatting for speed.
- * - Scans Column E. If a "Chip" (Band Member) appears in more than one row,
- * highlights all occurrences in RED.
- * - Handles Multi-Select chips ("Band A, Band B").
- * * 7. AUDIT TOOL (findBrokenLinks)
- * - "Link Tools > Find Broken Links"
- * - Scans the whole sheet for One-Way blend links (A links to B, B ignores A).
- * - Generates a popup report of specific errors.
- * ============================================================================
- */
