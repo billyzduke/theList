@@ -866,112 +866,139 @@ function generateBlendDataExport() {
 
 /**
  * MAINTENANCE: Enforce Canonical Names in Registry
- * 1. Reads 'blendus synced raw' to map Full Names & IDs -> Official NAME.
- * 2. Scans the 'blend registry' sheet (target columns).
- * 3. Overwrites any 'Full Name' or 'xIDENT' found with the Official NAME.
+ * * Updated to handle COMMA-SEPARATED LISTS of names in a single cell.
  */
 function maintainBlendRegistry() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  let logOutput = []; 
   
   // --- CONFIGURATION ---
-  const RAW_SHEET_NAME = BLENDED_WITH.RAW.SHEET_NAME
+  const RAW_SHEET_NAME = BLENDED_WITH.RAW.SHEET_NAME;
   const REGISTRY_SHEET_NAME = BLENDED_WITH.REGISTRY.SHEET_NAME; 
-  
-  // Enter the exact header names of the columns you want to clean up
   const TARGET_HEADERS = [BLENDED_WITH.REGISTRY.WITH_COL_NAME]; 
   // ---------------------
+
+  function normalizeKey(str) {
+    if (!str) return "";
+    return String(str)
+      .normalize('NFC')
+      .replace(/\u00A0/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
 
   const rawSheet = ss.getSheetByName(RAW_SHEET_NAME);
   const regSheet = ss.getSheetByName(REGISTRY_SHEET_NAME);
 
   if (!rawSheet || !regSheet) {
-    Logger.log("ERROR: Could not find one of the sheets.");
+    ui.alert("ERROR: Missing sheet(s).");
     return;
   }
 
-  // 1. READ SOURCE DATA
+  // 1. MAP BUILDER
   const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
-  const colName = rawHeaders.indexOf("NAME");
-  const colFullName = rawHeaders.indexOf("Full Name");
-  const colXID = rawHeaders.indexOf("xIDENT");
+  const colNameIndex = rawHeaders.findIndex(h => normalizeKey(h) === "name");
+  const colFullIndex = rawHeaders.findIndex(h => normalizeKey(h) === "full name");
+  const colXIDIndex  = rawHeaders.findIndex(h => normalizeKey(h) === "xident");
 
-  if (colName === -1) {
-    Logger.log("ERROR: Could not find 'NAME' column in raw sheet.");
+  if (colNameIndex === -1) {
+    ui.alert("CRITICAL ERROR: Could not find 'NAME' column.");
     return;
   }
 
   const lastRawRow = rawSheet.getLastRow();
-  if (lastRawRow < 2) return;
-  const rawData = rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, lastRawRow - BLENDED_WITH.RAW.DATA_START_ROW + 1, rawSheet.getLastColumn()).getValues();
-
-  // 2. BUILD MAPPING DICTIONARY
-  // Map: Key (Lowercased String) -> Value (Official Name)
+  const rawData = rawSheet.getRange(2, 1, lastRawRow - 1, rawSheet.getLastColumn()).getValues();
   let nameMap = {};
 
   rawData.forEach(row => {
-    let officialName = row[colName];
-    let fullName = (colFullName > -1) ? row[colFullName] : "";
-    let xID = (colXID > -1) ? row[colXID] : "";
-
+    let officialName = row[colNameIndex];
     if (officialName) {
-      // Map Official Name -> Official Name (for case correction)
-      nameMap[String(officialName).trim().toLowerCase()] = officialName;
+      let officialKey = normalizeKey(officialName);
+      nameMap[officialKey] = officialName; 
 
-      // Map Full Name -> Official Name
-      if (fullName) {
-        nameMap[String(fullName).trim().toLowerCase()] = officialName;
+      if (colFullIndex > -1 && row[colFullIndex]) {
+        let fullKey = normalizeKey(row[colFullIndex]);
+        if (fullKey) nameMap[fullKey] = officialName;
       }
-
-      // Map xIDENT -> Official Name
-      if (xID) {
-        nameMap[String(xID).trim().toLowerCase()] = officialName;
+      if (colXIDIndex > -1 && row[colXIDIndex]) {
+        let xKey = normalizeKey(row[colXIDIndex]);
+        if (xKey) nameMap[xKey] = officialName;
       }
     }
   });
 
-  // 3. SCAN REGISTRY AND FIX NAMES
+  logOutput.push(`Map built. Keys: ${Object.keys(nameMap).length}.`);
+
+  // 2. SCAN & SPLIT
   const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
   const lastRegRow = regSheet.getLastRow();
   
-  if (lastRegRow < 2) return;
+  if (lastRegRow < 2) {
+    ui.alert("Registry is empty.");
+    return;
+  }
 
-  TARGET_HEADERS.forEach(headerName => {
-    let colIndex = regHeaders.indexOf(headerName);
+  TARGET_HEADERS.forEach(target => {
+    let colIndex = regHeaders.findIndex(h => normalizeKey(h) === normalizeKey(target));
     
     if (colIndex > -1) {
-      Logger.log(`Cleaning column: ${headerName}...`);
+      logOutput.push(`Scanning Column: "${regHeaders[colIndex]}"...`);
       
-      // Get the column data
-      let range = regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, colIndex + 1, lastRegRow - BLENDED_WITH.REGISTRY.DATA_START_ROW + 1, 1);
+      let range = regSheet.getRange(2, colIndex + 1, lastRegRow - 1, 1);
       let values = range.getValues();
-      let hasChanges = false;
+      let changes = 0;
 
       for (let i = 0; i < values.length; i++) {
-        let currentVal = String(values[i][0]).trim();
+        let currentVal = String(values[i][0]);
         
-        if (currentVal) {
-          let lookup = currentVal.toLowerCase();
+        if (currentVal && currentVal.trim() !== "") {
           
-          // If we recognize the name (or ID/Full Name) AND it doesn't match the Official Name exactly
-          if (nameMap[lookup] && nameMap[lookup] !== currentVal) {
-            Logger.log(`Fixing: "${currentVal}" -> "${nameMap[lookup]}"`);
-            values[i][0] = nameMap[lookup];
-            hasChanges = true;
+          // SPLIT by comma (handling spaces around commas)
+          let names = currentVal.split(",");
+          let correctedNames = [];
+          let hasRowChange = false;
+
+          names.forEach(name => {
+            let originalPart = name.trim(); // Keep original spacing just in case
+            let lookup = normalizeKey(name);
+            
+            if (nameMap[lookup]) {
+              // We found a match in the map
+              correctedNames.push(nameMap[lookup]);
+              
+              // Did we actually change anything?
+              if (nameMap[lookup] !== originalPart) {
+                hasRowChange = true;
+              }
+            } else {
+              // No match found, keep original text
+              correctedNames.push(originalPart);
+            }
+          });
+
+          // If any name in the list was updated, write back the whole list
+          if (hasRowChange) {
+            // Join back with standard ", " separator
+            values[i][0] = correctedNames.join(", ");
+            changes++;
           }
         }
       }
 
-      // Bulk update only if needed
-      if (hasChanges) {
+      if (changes > 0) {
         range.setValues(values);
+        logOutput.push(`SUCCESS: Updated ${changes} rows in "${target}".`);
+      } else {
+        logOutput.push(`No changes needed for "${target}".`);
       }
-      
+
     } else {
-      Logger.log(`Warning: Header "${headerName}" not found in Registry.`);
+      logOutput.push(`WARNING: Column "${target}" not found.`);
     }
   });
-  
-  Logger.log("Name Cleanup Complete.");
+
+  ui.alert("Maintenance Report", logOutput.join("\n"), ui.ButtonSet.OK);
 }
 
 function setupBlendRegistry() {
