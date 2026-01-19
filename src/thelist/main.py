@@ -214,7 +214,7 @@ print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
 for xIDENT, loc_lady in loc_ladies.items():
   loc_subs = len(loc_lady['subs'])
-  name = loc_lady['name']
+  name = loc_lady['NAME']
   folderol_name = f'{name} | {xIDENT}'
   xIDEYE = df['xIDENT'] == xIDENT
   
@@ -237,6 +237,15 @@ for xIDENT, loc_lady in loc_ladies.items():
   else:
     rem_lady = rem_lady.iloc[0]
     df.loc[xIDEYE, 'Image Folder?'] = 'Y'
+    
+  if rem_lady['NAME'] != name:
+    if not rem_lady['NAME'].startswith("@") and not rem_lady['Full Name']:
+      df.loc[xIDEYE, 'Full Name'] = rem_lady['NAME']
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Full Name'] = rem_lady['NAME']
+    df.loc[xIDEYE, 'NAME'] = name
+    REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+    REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['NAME'] = name    
     
   if rem_lady['Image Folder?'] == 'Y':
     loc_lady['psf'] = loc_lady['psd'] + loc_lady['psb']
