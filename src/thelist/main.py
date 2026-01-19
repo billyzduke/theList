@@ -39,6 +39,7 @@ df_xIDENTs = set(df['xIDENT'].dropna().unique())
 dicTotals = df.iloc[0]
 df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 rem_ladies = df.iloc[1:]
+df = df.drop(df.index[0])
 
 # --- 1. SAFETY BACKUP --- / must allow some transforms so it matches raw sheet, not pretty
 timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -67,6 +68,7 @@ for root, subs, imgs in os.walk(ladiesPath):
       notName = re.compile(r'^!')
       m = notName.search(folder_name)
       if not m: 
+        xIDENT2 = name2 = ''
         
         # --- UPDATED FOLDER PARSING LOGIC ---
         # We need to determine the primary xIDENT for file counting, 
@@ -265,7 +267,7 @@ for xIDENT, loc_lady in loc_ladies.items():
       sys.exit()
     
     # Create new row
-    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Full Name': '', 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     
     # Refresh the selector
@@ -313,7 +315,7 @@ for xIDENT, loc_lady in loc_ladies.items():
         if str(rem_lady['blendus?']) != str(maxBlendus):
           df.loc[xIDEYE, 'blendus?'] = maxBlendus
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
-          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['blendus?'] = maxBlendus
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['blendus?'] = maxBlendus      
     
     cols = ['img', 'gif', 'jpg', 'png']
     
@@ -346,7 +348,7 @@ for xIDENT, loc_lady in loc_ladies.items():
     if bZdUtils.safe_str_to_int(rem_lady['subs']) != loc_subs:
       df.loc[xIDEYE, 'subs'] = loc_subs 
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['subs'] = loc_subs 
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['subs'] = loc_subs    
     
 print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
 
