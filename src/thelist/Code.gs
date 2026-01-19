@@ -59,15 +59,17 @@ function onOpen() {
   // --- 1. ONOPEN (Now Auto-Syncs) ---
   SpreadsheetApp.getUi()
     .createMenu('inhumantools')
+    .addItem('Refresh Hex Colors', 'colorizeHexColumn')
+    .addSeparator() 
     .addItem('Sync & Link "blended with…" (From Raw to Pretty)', 'syncFromRaw') // Manual click = Not silent
+    .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
+    .addSeparator() 
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
     .addSeparator() // Optional: Adds a line to separate the Export tool
+    .addItem('Perform Name/Full Name Maintenance on Blend Registry','maintainBlendRegistry')
     .addItem('Generate Missing xIDENT values for raw Ladies', 'generateMissingIDs')
-    .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
-    .addSeparator() 
     // .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
-    .addItem('Refresh Hex Colors', 'colorizeHexColumn')
     .addToUi();
 
   // Run automatically on load
@@ -860,6 +862,116 @@ function generateBlendDataExport() {
   exportSheet.getRange(1, 1, exportRows.length, 3).setValues(exportRows);
   
   SpreadsheetApp.getUi().alert("Export Ready! Go to the 'blend-data' sheet tab and select File > Download > Comma Separated Values (.csv).");
+}
+
+/**
+ * MAINTENANCE: Enforce Canonical Names in Registry
+ * 1. Reads 'blendus synced raw' to map Full Names & IDs -> Official NAME.
+ * 2. Scans the 'blend registry' sheet (target columns).
+ * 3. Overwrites any 'Full Name' or 'xIDENT' found with the Official NAME.
+ */
+function maintainBlendRegistry() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // --- CONFIGURATION ---
+  const RAW_SHEET_NAME = BLENDED_WITH.RAW.SHEET_NAME
+  const REGISTRY_SHEET_NAME = BLENDED_WITH.REGISTRY.SHEET_NAME; 
+  
+  // Enter the exact header names of the columns you want to clean up
+  const TARGET_HEADERS = [BLENDED_WITH.REGISTRY.WITH_COL_NAME]; 
+  // ---------------------
+
+  const rawSheet = ss.getSheetByName(RAW_SHEET_NAME);
+  const regSheet = ss.getSheetByName(REGISTRY_SHEET_NAME);
+
+  if (!rawSheet || !regSheet) {
+    Logger.log("ERROR: Could not find one of the sheets.");
+    return;
+  }
+
+  // 1. READ SOURCE DATA
+  const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
+  const colName = rawHeaders.indexOf("NAME");
+  const colFullName = rawHeaders.indexOf("Full Name");
+  const colXID = rawHeaders.indexOf("xIDENT");
+
+  if (colName === -1) {
+    Logger.log("ERROR: Could not find 'NAME' column in raw sheet.");
+    return;
+  }
+
+  const lastRawRow = rawSheet.getLastRow();
+  if (lastRawRow < 2) return;
+  const rawData = rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, lastRawRow - BLENDED_WITH.RAW.DATA_START_ROW + 1, rawSheet.getLastColumn()).getValues();
+
+  // 2. BUILD MAPPING DICTIONARY
+  // Map: Key (Lowercased String) -> Value (Official Name)
+  let nameMap = {};
+
+  rawData.forEach(row => {
+    let officialName = row[colName];
+    let fullName = (colFullName > -1) ? row[colFullName] : "";
+    let xID = (colXID > -1) ? row[colXID] : "";
+
+    if (officialName) {
+      // Map Official Name -> Official Name (for case correction)
+      nameMap[String(officialName).trim().toLowerCase()] = officialName;
+
+      // Map Full Name -> Official Name
+      if (fullName) {
+        nameMap[String(fullName).trim().toLowerCase()] = officialName;
+      }
+
+      // Map xIDENT -> Official Name
+      if (xID) {
+        nameMap[String(xID).trim().toLowerCase()] = officialName;
+      }
+    }
+  });
+
+  // 3. SCAN REGISTRY AND FIX NAMES
+  const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
+  const lastRegRow = regSheet.getLastRow();
+  
+  if (lastRegRow < 2) return;
+
+  TARGET_HEADERS.forEach(headerName => {
+    let colIndex = regHeaders.indexOf(headerName);
+    
+    if (colIndex > -1) {
+      Logger.log(`Cleaning column: ${headerName}...`);
+      
+      // Get the column data
+      let range = regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, colIndex + 1, lastRegRow - BLENDED_WITH.REGISTRY.DATA_START_ROW + 1, 1);
+      let values = range.getValues();
+      let hasChanges = false;
+
+      for (let i = 0; i < values.length; i++) {
+        let currentVal = String(values[i][0]).trim();
+        
+        if (currentVal) {
+          let lookup = currentVal.toLowerCase();
+          
+          // If we recognize the name (or ID/Full Name) AND it doesn't match the Official Name exactly
+          if (nameMap[lookup] && nameMap[lookup] !== currentVal) {
+            Logger.log(`Fixing: "${currentVal}" -> "${nameMap[lookup]}"`);
+            values[i][0] = nameMap[lookup];
+            hasChanges = true;
+          }
+        }
+      }
+
+      // Bulk update only if needed
+      if (hasChanges) {
+        range.setValues(values);
+      }
+      
+    } else {
+      Logger.log(`Warning: Header "${headerName}" not found in Registry.`);
+    }
+  });
+  
+  Logger.log("Name Cleanup Complete.");
 }
 
 function setupBlendRegistry() {
