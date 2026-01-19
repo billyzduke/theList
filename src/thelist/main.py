@@ -64,7 +64,7 @@ LOCAL_LADIES_CHANGED = {'LOCAL LADIES ADDED': {}, 'LOCAL LADIES DELETED': {}, 'L
 # gather relevant info from local drive
 for root, subs, imgs in os.walk(ladiesPath):
   if root.count('/') == 5: # disregard the root directory
-    folder_name = os.path.basename(root) # Get raw folder name
+    folder_name = bZdUtils.normalize_unicode(os.path.basename(root)) 
     if len(folder_name): # disregard categorical directories
       notName = re.compile(r'^!')
       m = notName.search(folder_name)
@@ -260,7 +260,7 @@ for xIDENT, loc_lady in loc_ladies.items():
     # This shouldn't happen if sheet has IDs, but if it does, we ADD A NEW ROW.
     # We do NOT check for duplicate names.
       
-    duplicates = df[df.index.duplicated()]
+    duplicates = df[df.duplicated(subset=['xIDENT'], keep=False)]
     if not duplicates.empty:
       print(name)
       print(loc_lady)
@@ -282,7 +282,12 @@ for xIDENT, loc_lady in loc_ladies.items():
     folderol_name = f'{name} | {xIDENT}'
     # LOGIC FIX: Don't just set to 'Y'. Use the value from the local lady logic (e.g., 'Y (combo)')
     df.loc[xIDEYE, 'Image Folder?'] = loc_lady['Image Folder?']
-        
+  
+  #print('REMOTE:', name, rem_lady)
+  if any(char.isalpha() and not char.isascii() for char in name):
+    print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
+    #sys.exit()
+
   rem_lady = df.loc[xIDEYE].iloc[0]
   
   if rem_lady['NAME'] != name:

@@ -1,7 +1,16 @@
 import inspect
 import os
 import sys
+import unicodedata
 from PIL import Image
+
+def normalize_unicode(s):
+  """
+  Converts NFD (Mac style) to NFC (Web style) so names match.
+  """
+  if not isinstance(s, str):
+    s = str(s)
+  return unicodedata.normalize('NFC', s)
 
 def get_file_ext(file_name):
   name_ext = {'name': '', 'ext': ''}
