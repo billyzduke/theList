@@ -39,7 +39,8 @@ df_xIDENTs = set(df['xIDENT'].dropna().unique())
 dicTotals = df.iloc[0]
 df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 rem_ladies = df.iloc[1:]
-df = df.drop(df.index[0])
+if not df.empty:
+  df = df.drop(df.index[0])
 
 # --- 1. SAFETY BACKUP --- / must allow some transforms so it matches raw sheet, not pretty
 timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -279,8 +280,9 @@ for xIDENT, loc_lady in loc_ladies.items():
   else:
     rem_lady = rem_lady.iloc[0]
     folderol_name = f'{name} | {xIDENT}'
-    df.loc[xIDEYE, 'Image Folder?'] = 'Y'
-    
+    # LOGIC FIX: Don't just set to 'Y'. Use the value from the local lady logic (e.g., 'Y (combo)')
+    df.loc[xIDEYE, 'Image Folder?'] = loc_lady['Image Folder?']
+        
   rem_lady = df.loc[xIDEYE].iloc[0]
   
   if rem_lady['NAME'] != name:
@@ -406,13 +408,13 @@ for i, rem_lady in rem_ladies.iterrows():
 print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
 print(json.dumps(LOCAL_LADIES_CHANGED, indent=2, default=str))
 
-print('whaddayalldo by title')
-alpha_sorted = dict(sorted(whaddayalldo.items()))
-print(json.dumps(alpha_sorted, indent=2, default=str))
+# print('whaddayalldo by title')
+# alpha_sorted = dict(sorted(whaddayalldo.items()))
+# print(json.dumps(alpha_sorted, indent=2, default=str))
 
-print('whaddayalldo by frequency')
-complex_sorted = dict(sorted(whaddayalldo.items(), key=lambda item: (-item[1], item[0])))
-print(json.dumps(complex_sorted, indent=2, default=str))
+# print('whaddayalldo by frequency')
+# complex_sorted = dict(sorted(whaddayalldo.items(), key=lambda item: (-item[1], item[0])))
+# print(json.dumps(complex_sorted, indent=2, default=str))
 
 df = df.fillna('') 
 
