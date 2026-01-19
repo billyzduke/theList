@@ -92,6 +92,6 @@ if mapping:
     print(f"Loaded {len(mapping)} IDs from map.")
     # 2. Run the Rename
     # Set dry_run=True to test first
-    rename_folders(ROOT_DIR, mapping, dry_run=True)
+    rename_folders(ROOT_DIR, mapping, dry_run=False)
 else:
     print("Mapping failed to load. Check your CSV file path and headers.")
