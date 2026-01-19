@@ -12,26 +12,18 @@ from natsort import natsorted
 import hashlib
 
 def generate_xIDENT(name, existing_ids):
-  """
-  Generates a deterministic 'x' + 5-char Hex ID.
-  """
   ID_PREFIX = 'x'
   ID_LENGTH = 5 
-  
   clean_name = str(name).strip().lower()
   salt = 0
-  
   while True:
     hash_input = clean_name
     if salt > 0:
       hash_input += f"_{salt}"
-        
     full_hex = hashlib.md5(hash_input.encode('utf-8')).hexdigest().upper()
     candidate_id = f"{ID_PREFIX}{full_hex[:ID_LENGTH]}"
-    
     if candidate_id not in existing_ids:
       return candidate_id
-    
     salt += 1
 
 # Auth and Open 
@@ -41,22 +33,11 @@ wks = sh.worksheet_by_title('blendus synced pretty')
 
 # Efficient Read
 df = wks.get_as_df(has_header=True)
-
 df = df.dropna(subset=['NAME'])
 df_xIDENTs = set(df['xIDENT'].dropna().unique())
 
 dicTotals = df.iloc[0]
-
-# df['whaddayado'] = (
-#   df['whaddayado']
-#   .fillna('')     
-#   .str.strip()
-#   .str.split(r'\s*[,/]\s*')
-#   .apply(lambda x: [] if x == [''] else x)
-#   .str.join(', ')
-# )
 df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
-
 rem_ladies = df.iloc[1:]
 
 # --- 1. SAFETY BACKUP --- / must allow some transforms so it matches raw sheet, not pretty
@@ -65,7 +46,7 @@ backup_filename = f"blendus_synced_raw_{timestamp}.csv"
 backup_path = os.path.join('/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList/backups', backup_filename)
 print(f"Creating safety backup of ORIGINAL data: {backup_path}...")
 df.to_csv(backup_path, index=False)
-# ------------------------
+# ---------------------
 
 print("\n\n", 'READING THE ROOM!', "\n\n")
 print("\n", dicTotals, "\n")
@@ -86,45 +67,58 @@ for root, subs, imgs in os.walk(ladiesPath):
       notName = re.compile(r'^!')
       m = notName.search(folder_name)
       if not m: 
-        # --- STRICT FOLDER PARSING LOGIC ---
+        
+        # --- UPDATED FOLDER PARSING LOGIC ---
+        # We need to determine the primary xIDENT for file counting, 
+        # but also register any secondary IDs if this is a combo folder.
+                
         if '|' in folder_name:
-          # Case A: Folder has ID. Trust the ID.
           names_xIDENTs = folder_name.split('|')
           names = names_xIDENTs[0].strip()
-          xIDENTs = names_xIDENTs[1].strip() # The ID is always after the pipe
+          xIDENTs = names_xIDENTs[1].strip()
           
-          # Handle the Ampersand sub-split if present
           if '&' in names and '&' in xIDENTs:
+            # --- COMBO FOLDER DETECTED ---
             name = names.split('&')[0].strip()
-            # If there's an ampersand in the ID part, we assume the first ID belongs to the first Name
-            xIDENT = xIDENTs.split('&')[0].strip() 
+            name2 = names.split('&')[1].strip()
+            xIDENT = xIDENTs.split('&')[0].strip()
+            xIDENT2 = xIDENTs.split('&')[1].strip()
+            
+            # 1. Register Lady 2 (Secondary) immediately as a "Ghost"
+            # We give her 0 stats, but map her to this folder so she isn't marked missing.
+            moa_ladies[xIDENT2] = {
+                'NAME': name2, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
+                'psd': [], 'psb': [], 'subs': [], 'vids': [], 
+                'folder': folder_name
+            }
+            
           else:
+            # Standard Single ID Folder
             name = names
             xIDENT = xIDENTs
         else:
-          # Case B: Folder has NO ID. 
-          # We do NOT check the sheet. We generate a fresh ID immediately.
+          # Legacy / No ID Folder -> Mint New
           xIDENT = generate_xIDENT(folder_name, df_xIDENTs)
           df_xIDENTs.add(xIDENT)  
-
           name = folder_name
           folder_name = f'{name} | {xIDENT}'
-          
+
           try:
-            # Rename the folder on disk
-            # Use os.path.join for safety
             parent_dir = os.path.dirname(root.rstrip('/'))
             new_path = os.path.join(parent_dir, folder_name)
-            
             os.rename(root, new_path)
-            
             LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
             LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'renamed_from', name)            
           except OSError as e:
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = f'ERROR ATTEMPTING TO RENAME LOCAL FOLDER: {name}\n{e}'
 
-        # KEY POINT: The dictionary is strictly keyed by xIDENT.
-        moa_ladies[xIDENT] = {'NAME': name, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 'psd': [], 'psb': [], 'subs': subs, 'vids': [], 'folder': folder_name}
+        # --- INITIALIZE PRIMARY ENTRY ---
+        # This entry will receive the file counts from the loop below
+        moa_ladies[xIDENT] = {
+            'NAME': name, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
+            'psd': [], 'psb': [], 'subs': subs, 'vids': [], 
+            'folder': folder_name
+        }
           
         # annoying but apparently necessary
         imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store')
@@ -140,16 +134,15 @@ for root, subs, imgs in os.walk(ladiesPath):
             if name_ext['ext'] == 'jpeg':
               j = root + '/' + name_ext['name'] + '.jpg'
               os.replace(file_at_path, j)
-              
               LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
               LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'jpeg -> jpg', [])
               LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name]['jpeg -> jpg'].append(j)     
-
               file_at_path = j
               name_ext = bZdUtils.get_file_ext(j)
               if '/' in name_ext['name']:
                 name_ext['name'] = os.path.basename(name_ext['name'])
 
+            # Increment stats for PRIMARY ONLY
             moa_ladies[xIDENT]['img'] += 1
 
             if name_ext['ext'] in ['avif', 'bmp', 'gif', 'tiff']:
@@ -280,12 +273,10 @@ for xIDENT, loc_lady in loc_ladies.items():
     REMOTE_LADIES_CHANGED['REMOTE LADIES ADDED'][folderol_name] = name
     
   else:
-    # Update existing row
     rem_lady = rem_lady.iloc[0]
     folderol_name = f'{name} | {xIDENT}'
     df.loc[xIDEYE, 'Image Folder?'] = 'Y'
     
-  # --- SYNC NAME (Local Folder -> Sheet) ---
   rem_lady = df.loc[xIDEYE].iloc[0]
   
   if rem_lady['NAME'] != name:
@@ -328,6 +319,7 @@ for xIDENT, loc_lady in loc_ladies.items():
     for col in cols:
       if col != 'img':
         imgs += loc_lady[col]
+        # Only update columns if this is the PRIMARY lady (non-zero stats), or if the remote sheet needs clearing
         if rem_lady[col] != loc_lady[col]:
           df.loc[xIDEYE, col] = loc_lady[col] 
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
@@ -340,11 +332,12 @@ for xIDENT, loc_lady in loc_ladies.items():
         REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Image Folder?'] = 'N'          
       
       try:
-        # LOGIC UPDATE: Delete the folder we actually found
         folder_to_delete = loc_lady['folder']
-        ladyPath = ladiesPath + folder_to_delete 
-        os.rmdir(ladyPath)
-        LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = ladyPath     
+        # SAFETY CHECK: Never delete a combo folder (contains & and |) just because the secondary lady has 0 stats
+        if not ('&' in folder_to_delete and '|' in folder_to_delete):
+            ladyPath = ladiesPath + folder_to_delete 
+            os.rmdir(ladyPath)
+            LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = ladyPath     
       except OSError as e:
         LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = f'ERROR ATTEMPTING TO DELETE LOCAL FOLDER: {ladyPath}\n{e}'
       
@@ -372,6 +365,7 @@ for i, rem_lady in rem_ladies.iterrows():
   if rem_lady['Image Folder?'] == 'Y':
     # Strict ID check
     if xIDENT not in loc_ladies: 
+      # Since we added ghosts for secondary ladies, this should only fire for truly missing folders
       ladyPath = ladiesPath + folder_name
       try:
         os.mkdir(ladyPath) 
