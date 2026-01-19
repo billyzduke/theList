@@ -42,7 +42,7 @@ wks = sh.worksheet_by_title('blendus synced pretty')
 # Efficient Read
 df = wks.get_as_df(has_header=True)
 df = df.dropna(subset=['NAME'])
-xIDENTs = set(df['xIDENT'].dropna().unique())
+df_xIDENTs = set(df['xIDENT'].dropna().unique())
 
 dicTotals = df.iloc[0]
 
@@ -221,14 +221,14 @@ for xIDENT, loc_lady in loc_ladies.items():
   rem_lady = df.loc[xIDEYE]
   if rem_lady.empty:
     duplicates = df[df.index.duplicated()]
-    if not duplicates.empty():
+    if not duplicates.empty:
       print(name)
       print(loc_lady)
       print(duplicates)
       sys.exit()
       
-    xIDENT = generate_xIDENT(name, xIDENTs)
-    xIDENTs.add(xIDENT)      
+    xIDENT = generate_xIDENT(name, df_xIDENTs)
+    df_xIDENTs.add(xIDENT)      
     new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     xIDEYE = df['xIDENT'] == xIDENT
