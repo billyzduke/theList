@@ -36,8 +36,9 @@ df = wks.get_as_df(has_header=True)
 df = df.dropna(subset=['NAME'])
 df_xIDENTs = set(df['xIDENT'].dropna().unique())
 
+df = df.drop(columns=['HIDE ME'])
 dicTotals = df.iloc[0]
-df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
+df = df.drop(columns=['hbd', 'age', 'img'])
 rem_ladies = df.iloc[1:]
 if not df.empty:
   df = df.drop(df.index[0])
@@ -122,6 +123,7 @@ for root, subs, imgs in os.walk(ladiesPath):
           except OSError as e:
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = f'ERROR ATTEMPTING TO RENAME LOCAL FOLDER: {name}\n{e}'
 
+          root = new_path
         # --- INITIALIZE PRIMARY ENTRY ---
         # This entry will receive the file counts from the loop below
         moa_ladies[xIDENT] = {
