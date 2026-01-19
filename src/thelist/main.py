@@ -68,10 +68,10 @@ local_xIDENTs = []
 for root, subs, imgs in os.walk(ladiesPath):
   if root.count('/') == 5: # disregard the root directory
     folder_name = bZdUtils.normalize_unicode(os.path.basename(root)) 
-    if len(folder_name): # disregard categorical directories
-      notName = re.compile(r'^!')
-      m = notName.search(folder_name)
-      if not m: 
+    if len(folder_name) and not str(folder_name).startswith('!'): #filter out categorical subdirectories
+      if str(folder_name) == 'untitled folder':
+        sys.exit("You've got an 'untitled folder' in your Ladies directory. You need to get rid of that before we can proceed.")
+      else:
         xIDENT2 = name2 = ''
         
         # --- UPDATED FOLDER PARSING LOGIC ---
