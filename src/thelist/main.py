@@ -61,6 +61,7 @@ ladiesPath = '/Volumes/Moana/Images/Ladies/'
 REMOTE_LADIES_CHANGED = {'REMOTE LADIES ADDED': {}, 'REMOTE LADIES UPDATED': {}}
 LOCAL_LADIES_CHANGED = {'LOCAL LADIES ADDED': {}, 'LOCAL LADIES DELETED': {}, 'LOCAL LADIES NOTED': {}, 'LOCAL LADIES UPDATED': {}}
 
+local_xIDENTs = []
 # gather relevant info from local drive
 for root, subs, imgs in os.walk(ladiesPath):
   if root.count('/') == 5: # disregard the root directory
@@ -94,6 +95,10 @@ for root, subs, imgs in os.walk(ladiesPath):
               'psd': [], 'psb': [], 'subs': [], 'vids': [], 
               'folder': folder_name
             }
+            if xIDENT2 in local_xIDENTs:
+              sys.exit(f'hexcode {xIDENT2} exists more than once in the local Ladies folder. Fix that shit.')
+            else:
+              local_xIDENTs.append(xIDENT2)
             
           else:
             # Standard Single ID Folder
@@ -122,6 +127,11 @@ for root, subs, imgs in os.walk(ladiesPath):
           'psd': [], 'psb': [], 'subs': subs, 'vids': [], 
           'folder': folder_name
         }
+        if xIDENT in local_xIDENTs:
+          sys.exit(f'hexcode {xIDENT} exists more than once in the local Ladies folder. Fix that shit.')
+        else:
+          local_xIDENTs.append(xIDENT2)
+
         if name2 and xIDENT2:
           moa_ladies[xIDENT]['Image Folder?'] = 'Y (combo)'
         
@@ -249,7 +259,7 @@ print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 # --- 2. THE MAIN LOOP (Strict ID Keys) ---
 for xIDENT, loc_lady in loc_ladies.items():
   loc_subs = len(loc_lady['subs'])
-  name = loc_lady['NAME']
+  name = bZdUtils.normalize_unicode(loc_lady['NAME'])
   
   # Strict Lookup: Does this xIDENT exist in the sheet?
   xIDEYE = df['xIDENT'] == xIDENT
@@ -283,15 +293,17 @@ for xIDENT, loc_lady in loc_ladies.items():
     # LOGIC FIX: Don't just set to 'Y'. Use the value from the local lady logic (e.g., 'Y (combo)')
     df.loc[xIDEYE, 'Image Folder?'] = loc_lady['Image Folder?']
   
+  # LEAVE THIS HERE, DON'T DELETE MY COMMENTED BLOCKS, PLEASE
   #print('REMOTE:', name, rem_lady)
-  if any(char.isalpha() and not char.isascii() for char in name):
-    print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
+  #if any(char.isalpha() and not char.isascii() for char in name):
+    #print('LOCAL:', name, loc_lady, "\n") # copy and paste name from here if mismatch due to special characters
     #sys.exit()
 
   rem_lady = df.loc[xIDEYE].iloc[0]
   
   if rem_lady['NAME'] != name:
-    if not str(rem_lady['NAME']).startswith("@") and not rem_lady['Full Name']:
+    
+    if not str(rem_lady['NAME']).startswith("@") and not rem_lady['Full Name'] and bZdUtils.normalize_unicode(rem_lady['NAME']).strip().lower() != bZdUtils.normalize_unicode(name).strip().lower():
       df.loc[xIDEYE, 'Full Name'] = rem_lady['NAME']
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Full Name'] = rem_lady['NAME']
@@ -336,7 +348,7 @@ for xIDENT, loc_lady in loc_ladies.items():
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name][col] = loc_lady[col]          
       
-    if imgs == 0 and loc_subs == 0:
+    if imgs == 0 and loc_subs == 0 and not len(loc_lady['psf']):
       if rem_lady['Image Folder?'] == 'Y':
         df.loc[xIDEYE, 'Image Folder?'] = 'N' 
         REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})

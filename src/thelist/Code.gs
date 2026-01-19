@@ -2,12 +2,12 @@ var BLENDED_WITH = {
   'HEADER_NAME': "blended with…",
   'RAW': {
     'SHEET_NAME': "blendus synced raw",
-    'WITH_COL': 0,
+    'WITH_COL_INDEX': 0,
     'DATA_START_ROW': 2
   },
   'PRETTY': {
     'SHEET_NAME': "blendus synced pretty",
-    'WITH_COL': 0,
+    'WITH_COL_INDEX': 0,
     'DATA_START_ROW': 3
   },
   'OG': {
@@ -31,12 +31,14 @@ function getBlendedWithColumnByName(sheet, headerName) {
    */
   var sheetName = sheet.getName();
   if (sheetName.endsWith("raw")) {
-    if (!BLENDED_WITH.RAW.COL || BLENDED_WITH.RAW.COL < 0) BLENDED_WITH.RAW.COL = getColumnIndexByName(sheet, headerName)
-    return BLENDED_WITH.RAW.COL
+    if (!BLENDED_WITH.RAW.WITH_COL_INDEX || BLENDED_WITH.RAW.WITH_COL_INDEX < 0) BLENDED_WITH.RAW.WITH_COL_INDEX = getColumnIndexByName(sheet, headerName)
+    //SpreadsheetApp.getUi().alert("sheet = '"+sheet+"'\nheaderName = '"+headerName+"'\nBLENDED_WITH.RAW.WITH_COL_INDEX = "+BLENDED_WITH.RAW.WITH_COL_INDEX);
+    return BLENDED_WITH.RAW.WITH_COL_INDEX
   }
   if (sheetName.endsWith("pretty")) {
-    if (!BLENDED_WITH.PRETTY.COL || BLENDED_WITH.PRETTY.COL < 0) BLENDED_WITH.PRETTY.COL = getColumnIndexByName(sheet, headerName)
-    return BLENDED_WITH.PRETTY.COL
+    if (!BLENDED_WITH.PRETTY.WITH_COL_INDEX || BLENDED_WITH.PRETTY.WITH_COL_INDEX < 0) BLENDED_WITH.PRETTY.WITH_COL_INDEX = getColumnIndexByName(sheet, headerName)
+    //SpreadsheetApp.getUi().alert("sheet = '"+sheet+"'\nheaderName = '"+headerName+"'\nBLENDED_WITH.PRETTY.WITH_COL_INDEX = "+BLENDED_WITH.PRETTY.WITH_COL_INDEX);
+    return BLENDED_WITH.PRETTY.WITH_COL_INDEX
   }
 }
 
