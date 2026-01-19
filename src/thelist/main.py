@@ -42,31 +42,30 @@ wks = sh.worksheet_by_title('blendus synced pretty')
 # Efficient Read
 df = wks.get_as_df(has_header=True)
 
-# --- 1. SAFETY BACKUP (MOVED TO TOP) ---
-# We backup the data exactly as it was read, BEFORE we mess with it.
-timestamp = time.strftime("%Y%m%d-%H%M%S")
-backup_filename = f"blendus_synced_raw_{timestamp}.csv"
-backup_path = os.path.join('/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList/backups', backup_filename)
-print(f"Creating safety backup of ORIGINAL data: {backup_path}...")
-df.to_csv(backup_path, index=False)
-# ---------------------------------------
-
 df = df.dropna(subset=['NAME'])
 df_xIDENTs = set(df['xIDENT'].dropna().unique())
 
 dicTotals = df.iloc[0]
 
-df['whaddayado'] = (
-  df['whaddayado']
-  .fillna('')     
-  .str.strip()
-  .str.split(r'\s*[,/]\s*')
-  .apply(lambda x: [] if x == [''] else x)
-  .str.join(', ')
-)
+# df['whaddayado'] = (
+#   df['whaddayado']
+#   .fillna('')     
+#   .str.strip()
+#   .str.split(r'\s*[,/]\s*')
+#   .apply(lambda x: [] if x == [''] else x)
+#   .str.join(', ')
+# )
 df = df.drop(columns=['hbd', 'age', 'img', 'HIDE ME'])
 
 rem_ladies = df.iloc[1:]
+
+# --- 1. SAFETY BACKUP --- / must allow some transforms so it matches raw sheet, not pretty
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+backup_filename = f"blendus_synced_raw_{timestamp}.csv"
+backup_path = os.path.join('/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList/backups', backup_filename)
+print(f"Creating safety backup of ORIGINAL data: {backup_path}...")
+df.to_csv(backup_path, index=False)
+# ------------------------
 
 print("\n\n", 'READING THE ROOM!', "\n\n")
 print("\n", dicTotals, "\n")
@@ -87,34 +86,44 @@ for root, subs, imgs in os.walk(ladiesPath):
       notName = re.compile(r'^!')
       m = notName.search(folder_name)
       if not m: 
-        # --- FOLDER PARSING LOGIC ---
+        # --- STRICT FOLDER PARSING LOGIC ---
         if '|' in folder_name:
-          # Case A: Folder has ID (e.g. "Miley | xA1B2C")
+          # Case A: Folder has ID. Trust the ID.
           names_xIDENTs = folder_name.split('|')
           names = names_xIDENTs[0].strip()
-          xIDENTs = names_xIDENTs[1].strip() # Fix: use index 1 for the ID part
+          xIDENTs = names_xIDENTs[1].strip() # The ID is always after the pipe
           
+          # Handle the Ampersand sub-split if present
           if '&' in names and '&' in xIDENTs:
             name = names.split('&')[0].strip()
-            xIDENT = xIDENTs.split('&')[1].strip()
+            # If there's an ampersand in the ID part, we assume the first ID belongs to the first Name
+            xIDENT = xIDENTs.split('&')[0].strip() 
           else:
             name = names
             xIDENT = xIDENTs
         else:
-          # We don't have an ID yet, so we generate one and write it to the folder name before proceeding.
-          xIDENT = generate_xIDENT(name, df_xIDENTs)
+          # Case B: Folder has NO ID. 
+          # We do NOT check the sheet. We generate a fresh ID immediately.
+          xIDENT = generate_xIDENT(folder_name, df_xIDENTs)
           df_xIDENTs.add(xIDENT)  
 
           name = folder_name
           folder_name = f'{name} | {xIDENT}'
           
           try:
-            os.rename(root, os.path.join(ladiesPath[:-1], folder_name))
+            # Rename the folder on disk
+            # Use os.path.join for safety
+            parent_dir = os.path.dirname(root.rstrip('/'))
+            new_path = os.path.join(parent_dir, folder_name)
+            
+            os.rename(root, new_path)
+            
             LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'renamed_from', name)
+            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'renamed_from', name)            
           except OSError as e:
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = f'ERROR ATTEMPTING TO RENAME LOCAL FOLDER: {name}\n{e}'
 
+        # KEY POINT: The dictionary is strictly keyed by xIDENT.
         moa_ladies[xIDENT] = {'NAME': name, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 'psd': [], 'psb': [], 'subs': subs, 'vids': [], 'folder': folder_name}
           
         # annoying but apparently necessary
@@ -189,7 +198,7 @@ for root, subs, imgs in os.walk(ladiesPath):
                 sys.exit(f'There was a problem converting a {name_ext['ext']} to a {make_it_peg}: "{file_at_path}"')
               
             if name_ext['ext'] == 'jpg':
-              moa_ladies[current_key][name_ext['ext']] += 1
+              moa_ladies[xIDENT][name_ext['ext']] += 1
 
             if name_ext['ext'] != 'psb' and name_ext['ext'] != 'psd':
               if '⊠' not in name_ext['name']:
@@ -231,59 +240,49 @@ for root, subs, imgs in os.walk(ladiesPath):
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name], 'vids', [])
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name]['vids'].append(i)     
 
-loc_ladies = dict(natsorted(moa_ladies.items(), key=lambda x: x[0].casefold()))
+# Sort the dictionary (now keyed by ID)
+# We sort by the NAME inside the dictionary for human readability
+loc_ladies = dict(sorted(moa_ladies.items(), key=lambda item: item[1]['NAME'].casefold()))
 
 print(f"\nlocal Ladies image directory contains {len(loc_ladies)} ladies\n")
 
 print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 
-# --- 2. THE MAIN LOOP (Fixed to prevent duplications) ---
-for key, loc_lady in loc_ladies.items():
+# --- 2. THE MAIN LOOP (Strict ID Keys) ---
+for xIDENT, loc_lady in loc_ladies.items():
   loc_subs = len(loc_lady['subs'])
   name = loc_lady['NAME']
   
-  # Try 1: Is the key a valid xIDENT?
-  xIDEYE = df['xIDENT'] == key
+  # Strict Lookup: Does this xIDENT exist in the sheet?
+  xIDEYE = df['xIDENT'] == xIDENT
   rem_lady = df.loc[xIDEYE]
   
-  # Try 2: If not found by ID, was the key actually a legacy Name?
-  # This prevents the "Doubling" bug by linking legacy folders to existing sheet rows.
   if rem_lady.empty:
-      name_match = df['NAME'].astype(str).str.strip().str.lower() == str(key).strip().lower()
-      rem_lady = df.loc[name_match]
-  
-  # If STILL empty, then it's truly a new person
-  if rem_lady.empty:
+    # EDGE CASE: Valid ID in folder, but not in sheet?
+    # This shouldn't happen if sheet has IDs, but if it does, we ADD A NEW ROW.
+    # We do NOT check for duplicate names.
+      
     duplicates = df[df.index.duplicated()]
     if not duplicates.empty:
       print(name)
       print(loc_lady)
       print(duplicates)
       sys.exit()
-      
-    xIDENT = generate_xIDENT(name, df_xIDENTs)
-    df_xIDENTs.add(xIDENT)  
     
     # Create new row
     new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     
-    # Get the index of the newly added row
+    # Refresh the selector
     xIDEYE = df['xIDENT'] == xIDENT
     
-    # For logging
     folderol_name = f'{name} | {xIDENT}'
     REMOTE_LADIES_CHANGED['REMOTE LADIES ADDED'][folderol_name] = name
     
   else:
-    # We found an existing row (either by ID or by Name)
-    # Grab the true xIDENT from the sheet to ensure we are aligned
-    xIDENT = rem_lady['xIDENT'].iloc[0]
+    # Update existing row
+    rem_lady = rem_lady.iloc[0]
     folderol_name = f'{name} | {xIDENT}'
-    
-    # Update our index selector to use the reliable ID
-    xIDEYE = df['xIDENT'] == xIDENT
-    
     df.loc[xIDEYE, 'Image Folder?'] = 'Y'
     
   # --- SYNC NAME (Local Folder -> Sheet) ---
@@ -330,23 +329,19 @@ for key, loc_lady in loc_ladies.items():
       if col != 'img':
         imgs += loc_lady[col]
         if rem_lady[col] != loc_lady[col]:
-          df.loc[xIDEYE, col] = loc_lady[col] # FIXED: was 'named', needs to be xIDEYE
+          df.loc[xIDEYE, col] = loc_lady[col] 
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name][col] = loc_lady[col]          
       
     if imgs == 0 and loc_subs == 0:
       if rem_lady['Image Folder?'] == 'Y':
-        df.loc[xIDEYE, 'Image Folder?'] = 'N' # FIXED: was 'named'
+        df.loc[xIDEYE, 'Image Folder?'] = 'N' 
         REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
         REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Image Folder?'] = 'N'          
       
       try:
-        # LOGIC UPDATE: Handle deletion of folders (piped or plain)
-        if '|' in loc_lady['folder']:
-             folder_to_delete = loc_lady['folder']
-        else:
-             folder_to_delete = name # Legacy fallback
-             
+        # LOGIC UPDATE: Delete the folder we actually found
+        folder_to_delete = loc_lady['folder']
         ladyPath = ladiesPath + folder_to_delete 
         os.rmdir(ladyPath)
         LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = ladyPath     
@@ -354,7 +349,7 @@ for key, loc_lady in loc_ladies.items():
         LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = f'ERROR ATTEMPTING TO DELETE LOCAL FOLDER: {ladyPath}\n{e}'
       
     if bZdUtils.safe_str_to_int(rem_lady['subs']) != loc_subs:
-      df.loc[xIDEYE, 'subs'] = loc_subs # FIXED: was 'named'
+      df.loc[xIDEYE, 'subs'] = loc_subs 
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['subs'] = loc_subs 
     
@@ -375,20 +370,13 @@ for i, rem_lady in rem_ladies.iterrows():
       whaddayalldo[occupado] += 1
       
   if rem_lady['Image Folder?'] == 'Y':
-    # Check if this ID exists in our local scan results
-    # We check keys directly because we normalized the keys in the first loop
+    # Strict ID check
     if xIDENT not in loc_ladies: 
-      # CHECK FOR LEGACY FOLDER:
-      # If we don't find the ID key, we might have skipped it because it was keyed by name.
-      # But since we processed everyone in the first loop, this `else` block is only for truly missing folders.
-      
       ladyPath = ladiesPath + folder_name
       try:
         os.mkdir(ladyPath) 
         LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][folder_name] = ladyPath     
       except FileExistsError:
-        # If it exists, it might be a Legacy folder we missed renaming?
-        # But we handle renames via os.rename usually... for now let's just log it.
         LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][folder_name] = f'LOCAL FOLDER ALREADY EXISTS (Rename pending?): {ladyPath}'
       except PermissionError:
         LOCAL_LADIES_CHANGED['LOCAL LADIES ADDED'][folder_name] = f'PERMISSION DENIED WHILE ATTEMPTING TO CREATE LOCAL FOLDER: {ladyPath}'
