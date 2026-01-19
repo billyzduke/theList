@@ -61,6 +61,7 @@ function onOpen() {
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
     .addSeparator() // Optional: Adds a line to separate the Export tool
+    .addItem('Generate Missing xIDENT values for raw Ladies', 'generateMissingIDs')
     .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
     .addSeparator() 
     // .addItem('Set Up "Blends Registry" (new sheet)', 'setupBlendRegistry')
@@ -487,6 +488,7 @@ function syncRegistryToPeople() {
   // We write to the specific target column (index + 1 for 1-based setRange)
   rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, rawTargetColIdx + 1, outputValues.length, 1).setValues(outputValues);
   
+  generateMissingIDs();
   // Optional: Log status
   console.log("Sync Complete.");
 }
@@ -733,7 +735,7 @@ function generateMissingIDs() {
   
   // 1. CONFIGURATION
   // Assuming headers are in Row 1. Data starts Row 2.
-  const ID_COL_INDEX = 1;   // Column A
+  const ID_COL_INDEX = getColumnIndexByName(sheet, "xIDENT"); 
   // const NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
 
   const lastRow = sheet.getLastRow();

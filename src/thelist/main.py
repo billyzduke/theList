@@ -10,6 +10,48 @@ import time
 import bZdUtils
 from natsort import natsorted
 
+import hashlib
+import pandas as pd
+
+def generate_id(name, existing_ids):
+  """
+  Generates a deterministic 'x' + 5-char Hex ID matching the Apps Script logic.
+  
+  :param name: The name string (e.g., "Miley Cyrus")
+  :param existing_ids: A Set of IDs that are already in use (to prevent collisions).
+  :return: A unique ID string (e.g., "xA1B2C").
+  """
+  
+  # Configuration matches Apps Script exactly
+  ID_PREFIX = 'x'
+  ID_LENGTH = 5 
+  
+  # 1. Normalize input matches JS: name.trim().toLowerCase()
+  clean_name = str(name).strip().lower()
+  
+  salt = 0
+  
+  while True:
+    # 2. Construct Input String
+    # JS Logic: if (salt > 0) input += "_" + salt;
+    hash_input = clean_name
+    if salt > 0:
+      hash_input += f"_{salt}"
+        
+    # 3. Compute MD5 Hash
+    # hashlib.md5 matches Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, ...)
+    full_hex = hashlib.md5(hash_input.encode('utf-8')).hexdigest().upper()
+    
+    # 4. Format: x + First 5 chars
+    candidate_id = f"{ID_PREFIX}{full_hex[:ID_LENGTH]}"
+    
+    # 5. Collision Check
+    if candidate_id not in existing_ids:
+      return candidate_id
+    
+    # Collision found? Increment salt and try again.
+    salt += 1
+
 include_og = False # reserved for future fixing of my own fuckups (retrieves data from original manually updated sheet)
 
 # Auth and Open 
@@ -26,6 +68,7 @@ if include_og:
 # 'has_header=True' uses the first row as column names.
 df = wks.get_as_df(has_header=True)
 df = df.dropna(subset=['NAME'])
+xIDENTs = set(df['xIDENT'].dropna().unique())
 
 dicTotals = df.iloc[0]
 
@@ -225,7 +268,9 @@ for name, loc_lady in loc_ladies.items():
       print(duplicates)
       sys.exit()
       
-    new_rem_lady = pd.DataFrame([{'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    xIDENT = generate_xIDENT(name, xIDENTs)
+    xIDENTs.add(xIDENT)      
+    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     # verify addition of new remote lady to dataframe
     named = df['NAME'] == name
