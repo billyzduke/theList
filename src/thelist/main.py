@@ -42,8 +42,10 @@ rem_ladies = df.iloc[1:]
 if not df.empty:
   df = df.drop(df.index[0])
 
+print("\n\n", 'LADIES, START YOUR ENGINES! LET THE SYNC BEGIN!', "\n\n")
+print(f"It is {time.strftime("%A, %Y-%m-%d %H:%M:%S %Z (%z)", time.localtime())}")
 # --- 1. SAFETY BACKUP --- / must allow some transforms so it matches raw sheet, not pretty
-timestamp = time.strftime("%Y%m%d-%H%M%S")
+timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
 backup_filename = f"blendus_synced_raw_{timestamp}.csv"
 backup_path = os.path.join('/Volumes/Moana/Dropbox/inhumantouch.art/@importantstuff/theList/backups', backup_filename)
 print(f"Creating safety backup of ORIGINAL data: {backup_path}...")
@@ -466,4 +468,4 @@ xwks.set_dataframe(df, start='A1', copy_head=True, fit=True)
 
 print(f"Successfully updated {len(df)} rows in a single batch.")
 
-print("\n\n", 'SYNC COMPLETE!')
+print("\n\n", f"LADIES LIST SYNC COMPLETE @ {time.strftime("%Y-%m-%d %H:%M:%S %Z (%z)", time.localtime())}")
