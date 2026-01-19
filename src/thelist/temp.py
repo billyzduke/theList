@@ -3,11 +3,11 @@ import csv
 import re
 
 # --- CONFIGURATION ---
-ROOT_DIR = '/Volumes/Moana/Dropbox/inhumantouch.art/'
-MAP_FILE = 'id_map.csv'
+ROOT_DIR = '/Volumes/Moana/Images/Ladies'
+MAP_FILE = 'xIDENT_NAME_map.csv'
 
 # Column Headers in your CSV (Check these match your export!)
-COL_NAME = 'Name'
+COL_NAME = 'NAME'
 COL_ID = 'xIDENT'  # Or whatever you named the ID column (e.g., "ID", "xID")
 
 def load_id_map(csv_path):
@@ -60,7 +60,7 @@ def rename_folders(root_path, id_map, dry_run=True):
                 # 4. Construct New Name
                 # Format: "OriginalName [xIDENT]"
                 # We keep the original 'dirname' casing/tags to be safe
-                new_dirname = f"{dirname} [{xid}]"
+                new_dirname = f"{dirname} | {xid}"
                 
                 full_old_path = os.path.join(root, dirname)
                 full_new_path = os.path.join(root, new_dirname)
@@ -86,7 +86,7 @@ def rename_folders(root_path, id_map, dry_run=True):
 
 # --- EXECUTION ---
 # 1. Load the Map
-mapping = load_id_map(MAP_FILE)
+mapping = load_id_map(os.path.join(ROOT_DIR, MAP_FILE))
 
 if mapping:
     print(f"Loaded {len(mapping)} IDs from map.")
