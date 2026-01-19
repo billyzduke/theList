@@ -322,12 +322,22 @@ for xIDENT, loc_lady in loc_ladies.items():
         isBlendus = re.compile(r'^blendus-')
         m = isBlendus.search(psf)
         if m:
+          ladyFolderPath = os.path.join(ladiesPath[:-1], loc_lady['folder'])
+          blendusFilePath = bZdUtils.normalize_unicode(os.path.join(ladyFolderPath, psf), form='NFD')
           blenDims = re.compile(r'[\d]{3,4}')
           m = blenDims.search(psf)
           blendus = int(m.group())
           if blendus > maxBlendus:
             maxBlendus = blendus
       if maxBlendus > 0 and str(rem_lady['blendus?']) != str(maxBlendus):
+        folder_tags = []
+        blendus_tags = ["Purple"]
+        if maxBlendus >= 1024:
+          folder_tags.append("Good 2 Go Girl!")
+          blendus_tags.append("Good 2 Go Girl!")
+        else:
+          folder_tags.append("Yellow")
+          blendus_tags.append("Yellow")
         if maxBlendus <= 1280:
           if maxBlendus not in [900, 1024, 1280]:
             maxBlendus = 'rando'
@@ -337,7 +347,13 @@ for xIDENT, loc_lady in loc_ladies.items():
           df.loc[xIDEYE, 'blendus?'] = maxBlendus
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['blendus?'] = maxBlendus      
-    
+
+          macos_tags.set_all(folder_tags, file=bZdUtils.normalize_unicode(ladyFolderPath, form='NFD'))          
+          macos_tags.set_all(blendus_tags, file=blendusFilePath)
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'file tags updated', {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name]['file tags updated'][blendusFilePath] = blendus_tags     
+
     cols = ['img', 'gif', 'jpg', 'png']
     
     imgs = 0
