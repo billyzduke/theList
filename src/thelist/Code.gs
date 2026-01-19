@@ -421,7 +421,7 @@ function highlightChipDuplicates(sheet) {
 function syncRegistryToPeople() {
   /**
    * REVERSE SYNC: Reads 'blends' Registry -> Updates 'blendus synced raw'.
-   * USES DYNAMIC COLUMN HEADERS.
+   * * ALPHABETIZES the Registry 'blendees' column while scanning.
    */
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rawSheet = ss.getSheetByName(BLENDED_WITH.RAW.SHEET_NAME);  
@@ -440,7 +440,7 @@ function syncRegistryToPeople() {
   const rawNameColIdx = rawHeaders.indexOf("NAME");
   const rawTargetColIdx = rawHeaders.indexOf(BLENDED_WITH.HEADER_NAME);
 
-  // Safety Check: Did we find all headers?
+  // Safety Check
   if (regBlendColIdx === -1 || rawNameColIdx === -1 || rawTargetColIdx === -1) {
     const missing = [];
     if (regBlendColIdx === -1) missing.push(`'${BLENDED_WITH.REGISTRY.WITH_COL_NAME}' in ${BLENDED_WITH.REGISTRY.SHEET_NAME}`);
@@ -450,35 +450,62 @@ function syncRegistryToPeople() {
     return;
   }
 
-  // 2. READ REGISTRY & BUILD MAP
-  // Get all data (skip header row)
-  const regData = regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, 1, regSheet.getLastRow() - BLENDED_WITH.REGISTRY.DATA_START_ROW + 1, regSheet.getLastColumn()).getValues();
+  // 2. READ REGISTRY, ALPHABETIZE, & BUILD MAP
+  const lastRegRow = regSheet.getLastRow();
+  // Protect against empty sheet errors
+  if (lastRegRow < BLENDED_WITH.REGISTRY.DATA_START_ROW) return;
+
+  const regData = regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, 1, lastRegRow - BLENDED_WITH.REGISTRY.DATA_START_ROW + 1, regSheet.getLastColumn()).getValues();
   
   const connections = {}; // { "Miley Cyrus": Set("Dua", "Halsey") }
+  const cleanBlendColumn = []; // Store sorted values to write back
+  let hasRegChanges = false;
 
   regData.forEach(row => {
-    const blendString = row[regBlendColIdx]; // Dynamic access
-    if (!blendString) return;
+    let blendString = row[regBlendColIdx]; 
+    let sortedString = "";
 
-    // Split "Miley, Dua" -> ["Miley", "Dua"]
-    const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
+    if (blendString) {
+      // 1. Split & Trim
+      const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
 
-    // Cross-link everyone
-    participants.forEach(person => {
-      if (!connections[person]) connections[person] = new Set();
-      
-      participants.forEach(partner => {
-        if (person !== partner) connections[person].add(partner);
+      // 2. Alphabetize
+      participants.sort(); 
+
+      // 3. Rejoin
+      sortedString = participants.join(", ");
+
+      // 4. Check Change (Did the sort change the string?)
+      if (sortedString !== blendString.toString()) {
+        hasRegChanges = true;
+      }
+
+      // 5. Build Connections (Cross-link everyone)
+      participants.forEach(person => {
+        if (!connections[person]) connections[person] = new Set();
+        participants.forEach(partner => {
+          if (person !== partner) connections[person].add(partner);
+        });
       });
-    });
+    }
+
+    // Push to the clean column array (maintains alignment with rows)
+    cleanBlendColumn.push([sortedString]);
   });
 
+  // 2.5 WRITE BACK TO REGISTRY (If alphabetization happened)
+  if (hasRegChanges) {
+    regSheet.getRange(BLENDED_WITH.REGISTRY.DATA_START_ROW, regBlendColIdx + 1, cleanBlendColumn.length, 1).setValues(cleanBlendColumn);
+    console.log("Registry 'blendees' column alphabetized.");
+  }
+
   // 3. UPDATE PEOPLE SHEET
-  const peopleData = rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, rawSheet.getLastRow() - BLENDED_WITH.RAW.DATA_START_ROW + 1, rawSheet.getLastColumn()).getValues();
+  const lastRawRow = rawSheet.getLastRow();
+  const peopleData = rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, 1, lastRawRow - BLENDED_WITH.RAW.DATA_START_ROW + 1, rawSheet.getLastColumn()).getValues();
   const outputValues = [];
 
   peopleData.forEach(row => {
-    const name = row[rawNameColIdx].toString().trim(); // Dynamic access
+    const name = row[rawNameColIdx].toString().trim(); 
     
     if (connections[name]) {
       const sortedPartners = Array.from(connections[name]).sort().join(", ");
@@ -488,12 +515,10 @@ function syncRegistryToPeople() {
     }
   });
 
-  // 4. WRITE BACK
-  // We write to the specific target column (index + 1 for 1-based setRange)
+  // 4. WRITE BACK TO RAW SHEET
   rawSheet.getRange(BLENDED_WITH.RAW.DATA_START_ROW, rawTargetColIdx + 1, outputValues.length, 1).setValues(outputValues);
   
   generateMissingIDs();
-  // Optional: Log status
   console.log("Sync Complete.");
 }
 

@@ -468,4 +468,4 @@ xwks.set_dataframe(df, start='A1', copy_head=True, fit=True)
 
 print(f"Successfully updated {len(df)} rows in a single batch.")
 
-print("\n\n", f"LADIES LIST SYNC COMPLETE @ {time.strftime("%Y-%m-%d %H:%M:%S %Z (%z)", time.localtime())}")
+print("\n\n", f"LADIES LIST SYNC COMPLETE @ {time.strftime("%Y-%m-%d %H:%M:%S %Z (%z)", time.localtime())}", "\n\n")
