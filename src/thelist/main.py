@@ -87,9 +87,9 @@ for root, subs, imgs in os.walk(ladiesPath):
             # 1. Register Lady 2 (Secondary) immediately as a "Ghost"
             # We give her 0 stats, but map her to this folder so she isn't marked missing.
             moa_ladies[xIDENT2] = {
-                'NAME': name2, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
-                'psd': [], 'psb': [], 'subs': [], 'vids': [], 
-                'folder': folder_name
+              'NAME': name2, 'Image Folder?': 'Y (combo)', 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
+              'psd': [], 'psb': [], 'subs': [], 'vids': [], 
+              'folder': folder_name
             }
             
           else:
@@ -115,11 +115,13 @@ for root, subs, imgs in os.walk(ladiesPath):
         # --- INITIALIZE PRIMARY ENTRY ---
         # This entry will receive the file counts from the loop below
         moa_ladies[xIDENT] = {
-            'NAME': name, 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
-            'psd': [], 'psb': [], 'subs': subs, 'vids': [], 
-            'folder': folder_name
+          'NAME': name, 'Image Folder?': 'Y', 'img': 0, 'gif': 0, 'jpg': 0, 'png': 0, 
+          'psd': [], 'psb': [], 'subs': subs, 'vids': [], 
+          'folder': folder_name
         }
-          
+        if name2 and xIDENT2:
+          moa_ladies[xIDENT]['Image Folder?'] = 'Y (combo)'
+        
         # annoying but apparently necessary
         imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store')
 
