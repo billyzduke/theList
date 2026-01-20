@@ -23,5 +23,14 @@
     "xwks",
     "zerosum",
     "zerosums"
-  ]
+  ],
+  "python.analysis.extraPaths": [
+    "./src/thelist"
+  ],
+  "python.analysis.aiCodeActions": {
+
+    "implementAbstractClasses": true,
+    "generateSymbol": true,
+    "convertFormatString": true
+  }
 }

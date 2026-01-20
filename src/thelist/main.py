@@ -1,6 +1,5 @@
 import pandas as pd
 import pygsheets
-import numpy as np
 import json
 import macos_tags
 import os
@@ -8,7 +7,6 @@ import re
 import sys
 import time
 import bZdUtils
-from natsort import natsorted
 
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
