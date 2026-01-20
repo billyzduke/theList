@@ -1,15 +1,7 @@
 {
   "cSpell.ignoreWords": [
-    "whaddayado"
-  ],
-  "cSpell.words": [
     "blen",
-    "blendees",
-    "blendums",
-    "blendus",
     "Carlile",
-    "cmap",
-    "Holoviews",
     "IDEYE",
     "ndims",
     "occupado",
@@ -23,12 +15,19 @@
     "xwks",
     "zerosum",
     "zerosums"
+    "whaddayado"
+  ],
+  "cSpell.words": [
+    "blendees",
+    "blendums",
+    "blendus",
+    "cmap",
+    "Holoviews",
   ],
   "python.analysis.extraPaths": [
     "./src/thelist"
   ],
   "python.analysis.aiCodeActions": {
-
     "implementAbstractClasses": true,
     "generateSymbol": true,
     "convertFormatString": true
