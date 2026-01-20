@@ -1,8 +1,24 @@
+import hashlib
 import inspect
 import os
 import sys
 import unicodedata
 from PIL import Image
+
+def generate_xIDENT(name, existing_ids=[]):
+  ID_PREFIX = 'x'
+  ID_LENGTH = 5 
+  clean_name = str(name).strip().lower()
+  salt = 0
+  while True:
+    hash_input = clean_name
+    if salt > 0:
+      hash_input += f"_{salt}"
+    full_hex = hashlib.md5(hash_input.encode('utf-8')).hexdigest().upper()
+    candidate_id = f"{ID_PREFIX}{full_hex[:ID_LENGTH]}"
+    if candidate_id not in existing_ids:
+      return candidate_id
+    salt += 1
 
 def normalize_unicode(s, form='NFC'):
   """
