@@ -331,26 +331,40 @@ for xIDENT, loc_lady in loc_ladies.items():
           blendus = int(m.group())
           if blendus > maxBlendus:
             maxBlendus = blendus
-      if maxBlendus > 0 and str(rem_lady['blendus?']) != str(maxBlendus):
-        folder_tags = []
-        blendus_tags = ["Purple"]
-        if maxBlendus >= 1024:
-          folder_tags.append("Good 2 Go Girl!")
-          blendus_tags.append("Good 2 Go Girl!")
-        else:
-          folder_tags.append("Yellow")
-          blendus_tags.append("Yellow")
-        if maxBlendus <= 1280:
-          if maxBlendus not in [900, 1024, 1280]:
-            maxBlendus = 'rando'
-        else:
-          maxBlendus = 'xlarge'
+      if maxBlendus > 0:
         if str(rem_lady['blendus?']) != str(maxBlendus):
+          if maxBlendus <= 1280:
+            if maxBlendus not in [900, 1024, 1280]:
+              maxBlendus = 'rando'
+          else:
+            maxBlendus = 'xlarge'
+          
           df.loc[xIDEYE, 'blendus?'] = maxBlendus
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['blendus?'] = maxBlendus      
 
-          macos_tags.set_all(folder_tags, file=bZdUtils.normalize_unicode(ladyFolderPath, form='NFD'))          
+        folderPath = bZdUtils.normalize_unicode(ladyFolderPath, form='NFD')
+        folder_tags = macos_tags.get_all(folderPath)
+        folder_tag_names = [t.name for t in file_tags]
+        if "Yellow" not in folder_tag_names and "Good 2 Go Girl!" not in folder_tag_names:
+          folder_tags = []
+          if maxBlendus >= 1024:
+            folder_tags.append("Good 2 Go Girl!")
+          else:
+            folder_tags.append("Yellow")
+          macos_tags.set_all(folder_tags, file=folderPath)
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'folder tags updated', {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name]['folder tags updated'][folderPath] = folder_tags
+          
+        blendus_tags = macos_tags.get_all(blendusFilePath)
+        blendus_tag_names = [t.name for t in file_tags]
+        if "Purple" not in blendus_tag_names and ("Unfit AMF" not in blendus_tag_names or "Good 2 Go Girl!" not in blendus_tag_names):
+          blendus_tags = ["Purple"]
+          if maxBlendus >= 1024:
+            blendus_tags.append("Good 2 Go Girl!")
+          else:
+            blendus_tags.append("Unfit AMF")
           macos_tags.set_all(blendus_tags, file=blendusFilePath)
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'file tags updated', {})
