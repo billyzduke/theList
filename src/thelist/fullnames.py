@@ -31,11 +31,9 @@ if not df.empty:
 # --- HELPER: DATE PARSER ---
 def extract_birth_date(soup):
   """ Tries to find the birth date in YYYY-MM-DD format. """
-  # 1. Hidden 'bday' class
   bday_tag = soup.find(class_="bday")
   if bday_tag: return bday_tag.get_text().strip()
 
-  # 2. Infobox text parse
   infobox = soup.find(class_="infobox")
   if infobox:
     for row in infobox.find_all("tr"):
@@ -46,65 +44,65 @@ def extract_birth_date(soup):
           text = data.get_text(" ", strip=True).replace('\xa0', ' ')
           text = re.sub(r'\[.*?\]', '', text)
           
-          # Match: "10 June 1967"
           match_dmy = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', text)
           if match_dmy:
             try: return datetime.strptime(match_dmy.group(0), "%d %B %Y").strftime("%Y-%m-%d")
             except: pass
 
-          # Match: "June 10, 1967"
           match_mdy = re.search(r'([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})', text)
           if match_mdy:
             try: return datetime.strptime(match_mdy.group(0), "%B %d, %Y").strftime("%Y-%m-%d")
             except: pass
 
-          # Match: Year Only
           year_match = re.search(r'\b(19\d{2}|20\d{2})\b', text)
           if year_match: return year_match.group(1)
   return ""
 
-# --- HELPER: NAME SIMILARITY CHECK ---
-def check_name_similarity(input_name, found_name):
-    """
-    Returns True if the names share at least one significant word.
-    Helps catch bad fuzzy searches (e.g. 'Alicia' vs 'Bully').
-    """
-    def clean(n): return set(re.findall(r'\w+', n.lower()))
-    input_set = clean(input_name)
-    found_set = clean(found_name)
+# --- HELPER: RESOLVE REDIRECTS ---
+def get_canonical_slug_from_api(title_or_slug):
+  params = {
+    "action": "query",
+    "format": "json",
+    "titles": title_or_slug,
+    "redirects": 1 
+  }
+  try:
+    # UPDATED: timeout=30
+    resp = requests.get(WIKI_API_URL, params=params, headers={'User-Agent': 'Bot/1.0'}, timeout=30)
+    data = resp.json()
     
-    # Remove common filler words if you want strictness, but usually fine.
-    common = input_set.intersection(found_set)
-    return len(common) > 0
+    pages = data.get("query", {}).get("pages", {})
+    for pid, pdata in pages.items():
+      if pid == "-1": return title_or_slug.replace(" ", "_")
+      final_title = pdata.get("title", "")
+      if final_title:
+        return final_title.replace(" ", "_")
+    return title_or_slug.replace(" ", "_")
+  except:
+    return title_or_slug.replace(" ", "_")
 
 # --- HELPER: SCRAPER ---
-def scrape_wiki_page(url, original_name):
+def scrape_wiki_page(slug, original_name):
   session = requests.Session()
   session.headers.update({'User-Agent': 'Bot/1.0 (Researching internal data consistency)'})
+  
+  url = f"https://en.wikipedia.org/wiki/{slug}"
 
   try:
-    page_resp = session.get(url) 
-    
-    # --- CAPTURE FINAL URL (The "Bully" Fix) ---
-    final_url = page_resp.url
-    final_slug = ""
-    if "/wiki/" in final_url:
-      final_slug = urllib.parse.unquote(final_url.split("/wiki/")[-1])
-    else:
-      final_slug = url.split("/wiki/")[-1] if "/wiki/" in url else ""
-
+    # UPDATED: timeout=30
+    page_resp = session.get(url, timeout=30) 
     if page_resp.status_code != 200:
-      return "", "404_NOT_FOUND", final_slug, ""
+      return "", "404_NOT_FOUND", ""
       
     soup = BeautifulSoup(page_resp.content, 'html.parser')
     
     if "may refer to:" in soup.get_text()[:500]:
-      return "", "DISAMBIGUATION_PAGE", final_slug, ""
+      return "", "DISAMBIGUATION_PAGE", ""
 
     birth_date = extract_birth_date(soup)
 
     content_div = soup.find(id="mw-content-text")
-    if not content_div: return "", "NO_CONTENT", final_slug, birth_date
+    if not content_div: return "", "NO_CONTENT", birth_date
 
     paragraphs = content_div.select("div.mw-parser-output > p")
     target_p = None
@@ -114,9 +112,8 @@ def scrape_wiki_page(url, original_name):
         target_p = p
         break
     
-    if not target_p: return "", "NO_PARAGRAPH", final_slug, birth_date
+    if not target_p: return "", "NO_PARAGRAPH", birth_date
 
-    # --- NAME PARSING ---
     collected_parts = []
     for child in target_p.children:
       if isinstance(child, str) and '(' in child: break
@@ -142,33 +139,34 @@ def scrape_wiki_page(url, original_name):
     clean_input = original_name.lower().strip()
     clean_found = full_name_candidate.lower().strip()
     
-    # 1. Exact Match (No new data, but valid page)
-    if clean_found == clean_input: 
-        return "", "MATCHES_INPUT", final_slug, birth_date
-        
-    # 2. New Name Found
-    if clean_found:
-        # SAFETY CHECK: Do the names look related?
-        if not check_name_similarity(original_name, full_name_candidate):
-             # Return the name but Flag it
-             return full_name_candidate, "WARN:NAME_MISMATCH", final_slug, birth_date
-        
-        return full_name_candidate, "FOUND_NEW_NAME", final_slug, birth_date
+    # 1. Name Check
+    if clean_found and clean_found != clean_input: 
+      input_words = set(re.findall(r'\w+', clean_input))
+      found_words = set(re.findall(r'\w+', clean_found))
+      if not input_words.intersection(found_words):
+        return full_name_candidate, "WARN:NAME_MISMATCH", birth_date
 
-    return "", "NO_BOLD_NAME", final_slug, birth_date
+      return full_name_candidate, "FOUND_NEW_NAME", birth_date
+
+    return "", "MATCHES_INPUT", birth_date
 
   except Exception as e:
-    return "", f"ERROR: {e}", "", ""
+    return "", f"ERROR: {e}", ""
 
-# --- HELPER: API ---
-def get_wiki_url_from_api(search_query):
+# --- HELPER: SEARCH STRATEGY ---
+def find_best_slug(name):
   try:
-    params = { "action": "opensearch", "search": search_query, "limit": 1, "namespace": 0, "format": "json" }
-    resp = requests.get(WIKI_API_URL, params=params, headers={'User-Agent': 'Bot/1.0'})
+    params = { "action": "opensearch", "search": name, "limit": 1, "namespace": 0, "format": "json" }
+    # UPDATED: timeout=30
+    resp = requests.get(WIKI_API_URL, params=params, headers={'User-Agent': 'Bot/1.0'}, timeout=30)
     data = resp.json()
-    if data[1]: return data[3][0], data[3][0].split("/wiki/")[-1]
-  except: pass
-  return "", ""
+    
+    if not data[1]: return ""
+    
+    best_match_title = data[1][0]
+    return get_canonical_slug_from_api(best_match_title)
+  except: 
+    return ""
 
 # ==========================================
 # 3. INCREMENTAL EXECUTION LOOP
@@ -177,97 +175,80 @@ def get_wiki_url_from_api(search_query):
 total_rows = len(df)
 fieldnames = ["NAME", "Full Name", "born", "wikipedia", "SOURCE", "STATUS"]
 
-print(f"Starting Smart Scan on {total_rows} rows...")
+print(f"Starting Safer Scan on {total_rows} rows...")
 
 with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
-    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-    writer.writeheader()
+  writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+  writer.writeheader()
+  
+  for index, row in df.iterrows():
+    name = str(row['NAME'])
     
-    for index, row in df.iterrows():
-        name = str(row['NAME'])
-        
-        sheet_full_name = str(row.get('Full Name', '')).strip()
-        sheet_birth_date = str(row.get('born', '')).strip()
-        sheet_slug = str(row.get('wikipedia', '')).strip()
+    sheet_full_name = str(row.get('Full Name', '')).strip()
+    sheet_birth_date = str(row.get('born', '')).strip()
+    sheet_slug = str(row.get('wikipedia', '')).strip()
 
-        has_full_name = bool(sheet_full_name)
-        has_birth_date = bool(sheet_birth_date)
+    has_full_name = bool(sheet_full_name)
+    has_birth_date = bool(sheet_birth_date)
 
-        row_data = {
-            "NAME": name,
-            "Full Name": sheet_full_name,
-            "born": sheet_birth_date,
-            "wikipedia": sheet_slug,
-            "SOURCE": "",
-            "STATUS": ""
-        }
+    row_data = {
+      "NAME": name,
+      "Full Name": sheet_full_name,
+      "born": sheet_birth_date,
+      "wikipedia": sheet_slug,
+      "SOURCE": "",
+      "STATUS": ""
+    }
 
-        # --- LOGIC GATE: PASS if we have everything ---
-        if has_full_name and has_birth_date:
-            row_data["SOURCE"] = "GSHEET"
-            row_data["STATUS"] = "PASSED"
-            writer.writerow(row_data)
-            csv_file.flush()
-            continue
+    # --- PATH 1: HAS SLUG -> SKIP EVERYTHING ---
+    if sheet_slug:
+      row_data["STATUS"] = "PASSED (EXISTING SLUG)"
+      row_data["SOURCE"] = "GSHEET"
+      writer.writerow(row_data)
+      csv_file.flush()
+      continue
 
-        # --- SEARCH REQUIRED ---
-        print(f"[{index}/{total_rows}] Searching: {name}...", end="\r")
-        
-        target_url, slug_used, source_method = "", "", ""
+    # --- PATH 2: NO SLUG -> SEARCH ---
+    print(f"[{index}/{total_rows}] Searching: {name}...", end="\r")
+    
+    slug_to_use = ""
+    source_method = ""
 
-        if sheet_slug:
-            target_url = f"https://en.wikipedia.org/wiki/{sheet_slug}"
-            slug_used = sheet_slug
-            source_method = "SLUG"
-        else:
-            target_url, slug_used = get_wiki_url_from_api(name)
-            source_method = "API"
+    # Find new slug (Fuzzy + Resolve)
+    slug_to_use = find_best_slug(name)
+    source_method = "API"
 
-        if target_url:
-            found_name, status, final_slug, found_date = scrape_wiki_page(target_url, name)
-            
-            # --- CONSOLE FEEDBACK FOR REDIRECTS ---
-            if final_slug and final_slug != slug_used:
-                print(f"[{index}] >>> Redirect: {slug_used} -> {final_slug}" + " "*20)
+    if slug_to_use:
+      found_name, status, found_date = scrape_wiki_page(slug_to_use, name)
+      
+      # Update Row
+      row_data["wikipedia"] = slug_to_use
+      row_data["SOURCE"] = source_method
 
-            # --- FORCE SLUG UPDATE ---
-            # Even if name/date failed, if we have a final slug, USE IT.
-            if final_slug:
-                row_data["wikipedia"] = final_slug
-            else:
-                row_data["wikipedia"] = slug_used
+      status_parts = []
+      if "WARN:" in status: status_parts.append(status)
 
-            # --- FILL DATA ---
-            status_parts = []
-            
-            # Add Warn flag if present
-            if "WARN:" in status:
-                status_parts.append(status) 
+      if not has_full_name and found_name:
+        row_data["Full Name"] = found_name
+        status_parts.append("FOUND_NAME")
 
-            if not has_full_name and found_name:
-                row_data["Full Name"] = found_name
-                status_parts.append("FOUND_NAME")
+      if not has_birth_date and found_date:
+        row_data["born"] = found_date
+        status_parts.append("FOUND_DATE")
 
-            if not has_birth_date and found_date:
-                row_data["born"] = found_date
-                status_parts.append("FOUND_DATE")
+      if status == "404_NOT_FOUND" or status == "DISAMBIGUATION_PAGE":
+        row_data["STATUS"] = status
+      else:
+        row_data["STATUS"] = " & ".join(status_parts) if status_parts else "REVIEW_NO_NEW_DATA"
 
-            row_data["SOURCE"] = source_method
-            
-            # Final Status Composition
-            if status == "404_NOT_FOUND" or status == "DISAMBIGUATION_PAGE":
-                row_data["STATUS"] = status
-            else:
-                row_data["STATUS"] = " & ".join(status_parts) if status_parts else "REVIEW_NO_NEW_DATA"
+    else:
+      row_data["SOURCE"] = "FAILED_SEARCH"
+      row_data["STATUS"] = "NO_URL"
 
-        else:
-            row_data["SOURCE"] = "FAILED_SEARCH"
-            row_data["STATUS"] = "NO_URL"
-
-        writer.writerow(row_data)
-        csv_file.flush() 
-        
-        if source_method == "API": time.sleep(0.5)
-        else: time.sleep(0.1)
+    writer.writerow(row_data)
+    csv_file.flush() 
+    
+    # Consistent sleep to avoid hammering
+    time.sleep(0.5)
 
 print(f"\nDone. All rows processed and saved to {CSV_OUTPUT_FILE}")
