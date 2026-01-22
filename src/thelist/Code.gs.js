@@ -1,5 +1,6 @@
 var BLENDED_WITH = {
-  'HEADER_NAME': "blended with…",
+  'WITH_HEADER': "blended with…",
+  'IN_HEADER': "in blends…",
   'RAW': {
     'SHEET_NAME': "blendus synced raw",
     'WITH_COL_INDEX': 0,
