@@ -265,7 +265,7 @@ for xIDENT, loc_lady in loc_ladies.items():
       sys.exit()
     
     # Create new row
-    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Full Name': '', 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/alias/group': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'age': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Full Name': '', 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/artist': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     
     # Refresh the selector
@@ -315,6 +315,11 @@ for xIDENT, loc_lady in loc_ladies.items():
           if blendus > maxBlendus:
             maxBlendus = blendus
       if maxBlendus > 0:
+        blendus_tags = ["Purple"]
+        if maxBlendus >= 1024:
+          blendus_tags.append("Good 2 Go Girl!")
+        else:
+          blendus_tags.append("Unfit AMF")
         if str(rem_lady['blendus?']) != str(maxBlendus):
           if maxBlendus <= 1280:
             if maxBlendus not in [900, 1024, 1280]:
@@ -328,7 +333,7 @@ for xIDENT, loc_lady in loc_ladies.items():
 
         folderPath = bZdUtils.normalize_unicode(ladyFolderPath, form='NFD')
         folder_tags = macos_tags.get_all(folderPath)
-        folder_tag_names = [t.name for t in file_tags]
+        folder_tag_names = [t.name for t in folder_tags]
         if "Yellow" not in folder_tag_names and "Good 2 Go Girl!" not in folder_tag_names:
           folder_tags = []
           if maxBlendus >= 1024:
@@ -340,14 +345,9 @@ for xIDENT, loc_lady in loc_ladies.items():
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'folder tags updated', {})
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name]['folder tags updated'][folderPath] = folder_tags
           
-        blendus_tags = macos_tags.get_all(blendusFilePath)
-        blendus_tag_names = [t.name for t in file_tags]
-        if "Purple" not in blendus_tag_names and ("Unfit AMF" not in blendus_tag_names or "Good 2 Go Girl!" not in blendus_tag_names):
-          blendus_tags = ["Purple"]
-          if maxBlendus >= 1024:
-            blendus_tags.append("Good 2 Go Girl!")
-          else:
-            blendus_tags.append("Unfit AMF")
+        blursed_tags = macos_tags.get_all(blendusFilePath)
+        blursed_tag_names = [t.name for t in blursed_tags]
+        if "Purple" not in blursed_tag_names and ("Unfit AMF" not in blursed_tag_names or "Good 2 Go Girl!" not in blursed_tag_names):
           macos_tags.set_all(blendus_tags, file=blendusFilePath)
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'file tags updated', {})

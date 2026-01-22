@@ -8,12 +8,10 @@ import sys
 import urllib.parse
 from datetime import datetime
 
-# --- SELENIUM IMPORTS ---
+# --- SELENIUM IMPORTS (SAFARI) ---
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.safari.options import Options
 from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -22,7 +20,7 @@ OUTPUT_DIR = "../../data"
 CSV_FILENAME = "imdb_audit.csv"
 CSV_OUTPUT_FILE = os.path.join(OUTPUT_DIR, CSV_FILENAME)
 
-ROW_LIMIT = 500
+ROW_LIMIT = 25 # 500
 SEARCH_URL_BASE = "https://www.imdb.com/find/?q={}&s=nm"
 
 # --- ENSURE DIRECTORY EXISTS ---
@@ -32,18 +30,12 @@ if not os.path.exists(OUTPUT_DIR):
   except OSError:
     pass
 
-# 1. SETUP CHROME DRIVER
+# 1. SETUP SAFARI DRIVER
 def init_driver():
-  print("Initializing Browser...")
-  chrome_options = Options()
-  # chrome_options.add_argument("--headless=new") # Uncomment to run invisible
-  
-  # Anti-detection options
-  chrome_options.add_argument("--disable-blink-features=AutomationControlled") 
-  chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-  
-  service = Service(ChromeDriverManager().install())
-  driver = webdriver.Chrome(service=service, options=chrome_options)
+  print("Initializing Safari Browser...")
+  # Safari driver is built-in on macOS. No separate download needed.
+  # Ensure "Allow Remote Automation" is enabled in Safari > Develop menu.
+  driver = webdriver.Safari()
   return driver
 
 # 2. HELPER: PARSE DATE
@@ -61,7 +53,7 @@ def parse_imdb_date(date_str):
     return year_match.group(1)
   return date_str
 
-# 3. HELPER: DIRECT IMDB SEARCH (SELENIUM)
+# 3. HELPER: DIRECT IMDB SEARCH
 def search_imdb_direct(driver, name):
   encoded_name = urllib.parse.quote(name)
   url = SEARCH_URL_BASE.format(encoded_name)
@@ -69,18 +61,14 @@ def search_imdb_direct(driver, name):
   try:
     driver.get(url)
     
-    # Wait for results section to appear
+    # Wait for results
     try:
-      # We wait for the main list container
       WebDriverWait(driver, 5).until(
         EC.presence_of_element_located((By.CLASS_NAME, "ipc-metadata-list"))
       )
     except:
-      # If timeout, it might mean 0 results found
       return []
 
-    # Find all links in the results section
-    # We target the specific results container to avoid header/footer links
     results_section = driver.find_element(By.CLASS_NAME, "ipc-metadata-list")
     links = results_section.find_elements(By.TAG_NAME, "a")
     
@@ -90,7 +78,6 @@ def search_imdb_direct(driver, name):
     for link in links:
       href = link.get_attribute("href")
       if href and "/name/nm" in href:
-        # Regex to grab ID
         match = re.search(r'/name/(nm\d+)', href)
         if match:
           nm_id = match.group(1)
@@ -106,7 +93,7 @@ def search_imdb_direct(driver, name):
     print(f" [Search Error: {e}] ", end="")
     return []
 
-# 4. HELPER: SCRAPE IMDB PROFILE (SELENIUM)
+# 4. HELPER: SCRAPE IMDB PROFILE
 def scrape_imdb_profile(driver, nm_id):
   url = f"https://www.imdb.com/name/{nm_id}/"
   try:
@@ -124,7 +111,6 @@ def scrape_imdb_profile(driver, nm_id):
     # Extract Birthdate
     born = ""
     try:
-      # Using explicit wait here too just in case it loads lazily
       birth_div = driver.find_element(By.CSS_SELECTOR, "[data-testid='birth-and-death-birthdate']")
       raw_text = birth_div.text
       clean_text = raw_text.replace("Born", "").strip()
@@ -154,7 +140,7 @@ if len(df) > ROW_LIMIT:
   print(f"Limiting execution to first {ROW_LIMIT} rows.")
   df = df.head(ROW_LIMIT)
 
-# START BROWSER
+# START BROWSER (SAFARI)
 driver = init_driver()
 
 fieldnames = [
@@ -164,7 +150,7 @@ fieldnames = [
   "Res3_Name", "Res3_ID", "Res3_Born"
 ]
 
-print(f"Starting Direct IMDb Scan. Output: {CSV_OUTPUT_FILE}")
+print(f"Starting Direct IMDb Scan (Safari). Output: {CSV_OUTPUT_FILE}")
 
 try:
   with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
@@ -208,7 +194,6 @@ try:
           row_data[f"Res{res_num}_ID"] = nm_id
           row_data[f"Res{res_num}_Born"] = p_born
           
-          # Human pause
           time.sleep(1)
 
       writer.writerow(row_data)
