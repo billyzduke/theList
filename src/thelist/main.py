@@ -122,7 +122,8 @@ for root, subs, imgs in os.walk(ladiesPath):
           moa_ladies[xIDENT]['Image Folder?'] = 'Y (combo)'
         
         # annoying but apparently necessary
-        imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store')
+        imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store') # have definitely had this issue
+        imgs = bZdUtils.remove_value_from_list(imgs, 'Thumbs.db') # just to be safe
 
         # count and sort image files by ext/type 
         for i in imgs:

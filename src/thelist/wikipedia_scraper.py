@@ -67,7 +67,7 @@ def get_canonical_slug_from_api(title_or_slug):
     "redirects": 1 
   }
   try:
-    # UPDATED: timeout=30
+    # timeout=30 seconds
     resp = requests.get(WIKI_API_URL, params=params, headers={'User-Agent': 'Bot/1.0'}, timeout=30)
     data = resp.json()
     
@@ -89,7 +89,7 @@ def scrape_wiki_page(slug, original_name):
   url = f"https://en.wikipedia.org/wiki/{slug}"
 
   try:
-    # UPDATED: timeout=30
+    # timeout=30 seconds
     page_resp = session.get(url, timeout=30) 
     if page_resp.status_code != 200:
       return "", "404_NOT_FOUND", ""
@@ -102,7 +102,8 @@ def scrape_wiki_page(slug, original_name):
     birth_date = extract_birth_date(soup)
 
     content_div = soup.find(id="mw-content-text")
-    if not content_div: return "", "NO_CONTENT", birth_date
+    if not content_div:
+      return "", "NO_CONTENT", birth_date
 
     paragraphs = content_div.select("div.mw-parser-output > p")
     target_p = None
@@ -112,27 +113,49 @@ def scrape_wiki_page(slug, original_name):
         target_p = p
         break
     
-    if not target_p: return "", "NO_PARAGRAPH", birth_date
+    if not target_p:
+      return "", "NO_PARAGRAPH", birth_date
 
     collected_parts = []
+    
+    # Iterate through children to maintain order
     for child in target_p.children:
-      if isinstance(child, str) and '(' in child: break
-      if child.name is None and '(' in str(child): break
+      # Stop at the start of bio details (usually indicated by parenthesis with 'born')
+      if isinstance(child, str) and '(' in child:
+        break
+      if child.name is None and '(' in str(child):
+        break
 
+      # 1. BOLD TAGS (The Names)
       if child.name in ['b', 'strong']:
         text = child.get_text().strip()
-        if text: collected_parts.append(text)
+        if text:
+          collected_parts.append(text)
+      
+      # 2. UNBOLDED TEXT (Look for Nicknames in quotes)
       elif isinstance(child, str) or child.name is None:
-        quotes = re.findall(r'["“](.*?)["”]', str(child))
+        text = str(child)
+        # Regex to find text inside quotes (standard or curly)
+        quotes = re.findall(r'["“](.*?)["”]', text)
         for q in quotes: 
-          if q.strip(): collected_parts.append(f'"{q.strip()}"')
+          if q.strip(): 
+            # Re-add standard quotes around the found nickname
+            collected_parts.append(f'"{q.strip()}"')
+      
+      # 3. NESTED BOLD (e.g., inside a span)
       elif child.name == 'span':
         nested = child.find(['b', 'strong'])
-        if nested: collected_parts.append(nested.get_text().strip())
+        if nested:
+          collected_parts.append(nested.get_text().strip())
 
+    # Deduplicate while preserving order
     seen = set()
     unique_parts = [x for x in collected_parts if not (x in seen or seen.add(x))]
-    full_name_candidate = " ".join(unique_parts)
+    
+    # JOIN WITH THE REQUESTED DELIMITER
+    full_name_candidate = " . ".join(unique_parts)
+    
+    # Cleanup citations and excessive whitespace
     full_name_candidate = re.sub(r'\[.*?\]', '', full_name_candidate)
     full_name_candidate = re.sub(r'\s+', ' ', full_name_candidate).strip()
 
@@ -141,8 +164,11 @@ def scrape_wiki_page(slug, original_name):
     
     # 1. Name Check
     if clean_found and clean_found != clean_input: 
+      # Safety Check for fuzzy match relevance
       input_words = set(re.findall(r'\w+', clean_input))
       found_words = set(re.findall(r'\w+', clean_found))
+      
+      # If no shared words, flag it
       if not input_words.intersection(found_words):
         return full_name_candidate, "WARN:NAME_MISMATCH", birth_date
 
@@ -157,11 +183,12 @@ def scrape_wiki_page(slug, original_name):
 def find_best_slug(name):
   try:
     params = { "action": "opensearch", "search": name, "limit": 1, "namespace": 0, "format": "json" }
-    # UPDATED: timeout=30
+    # timeout=30 seconds
     resp = requests.get(WIKI_API_URL, params=params, headers={'User-Agent': 'Bot/1.0'}, timeout=30)
     data = resp.json()
     
-    if not data[1]: return ""
+    if not data[1]:
+      return ""
     
     best_match_title = data[1][0]
     return get_canonical_slug_from_api(best_match_title)
@@ -226,7 +253,8 @@ with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
       row_data["SOURCE"] = source_method
 
       status_parts = []
-      if "WARN:" in status: status_parts.append(status)
+      if "WARN:" in status:
+        status_parts.append(status)
 
       if not has_full_name and found_name:
         row_data["Full Name"] = found_name
@@ -248,7 +276,7 @@ with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
     writer.writerow(row_data)
     csv_file.flush() 
     
-    # Consistent sleep to avoid hammering
+    # Consistent sleep
     time.sleep(0.5)
 
 print(f"\nDone. All rows processed and saved to {CSV_OUTPUT_FILE}")
