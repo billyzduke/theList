@@ -188,9 +188,6 @@ function onEdit(e) {
   }
 }
 
-/**
- * Syncs BOTH "blended with..." and "in blends..." columns from Raw to Pretty.
- */
 function syncFromRaw(silent) {
   var isSilent = (silent === true);
 
@@ -203,7 +200,7 @@ function syncFromRaw(silent) {
     return;
   }
 
-  // --- 1. SETUP COLUMNS ---
+  // Find Columns
   var rawColBlended = getColumnIndexByName(sourceSheet, BLENDER.WITH_HEADER);
   var rawColInBlends = getColumnIndexByName(sourceSheet, BLENDER.IN_HEADER);
   
@@ -211,7 +208,7 @@ function syncFromRaw(silent) {
   var prettyColInBlends = getColumnIndexByName(targetSheet, BLENDER.IN_HEADER);
 
   if (rawColBlended == -1 || rawColInBlends == -1 || prettyColBlended == -1 || prettyColInBlends == -1) {
-    if (!isSilent) SpreadsheetApp.getUi().alert("Could not find one of the required columns.");
+    if (!isSilent) SpreadsheetApp.getUi().alert("Missing required columns in Raw or Pretty sheets.");
     return;
   }
 
@@ -219,33 +216,33 @@ function syncFromRaw(silent) {
   var totalRows = lastRowRaw - BLENDER.RAW.DATA_START_ROW + 1;
   if (totalRows < 1) return; 
 
-  // --- 2. FETCH DATA (Batch Get) ---
-  // We grab both columns at once to be efficient
-  // Assuming they might not be adjacent, we fetch individually
+  // Batch Get Data
   var rawValuesBlended = sourceSheet.getRange(BLENDER.RAW.DATA_START_ROW, rawColBlended, totalRows, 1).getValues();
   var rawValuesInBlends = sourceSheet.getRange(BLENDER.RAW.DATA_START_ROW, rawColInBlends, totalRows, 1).getValues();
   
-  // --- 3. WRITE & LINK "BLENDED WITH" (Ladies) ---
+  // A. Write & Link "BLENDED WITH" (Links to Ladies in Pretty Sheet)
   var targetRangeBlended = targetSheet.getRange(BLENDER.PRETTY.DATA_START_ROW, prettyColBlended, totalRows, 1);
-  targetRangeBlended.setBackground(null); // Clear old audit colors
+  targetRangeBlended.setBackground(null);
   targetRangeBlended.setValues(rawValuesBlended);
-  
-  // Link to Ladies (Current Sheet)
   applyLinksToRange(targetRangeBlended, "LADIES"); 
 
-  // --- 4. WRITE & LINK "IN BLENDS" (Hexcodes) ---
+  // B. Write & Link "IN BLENDS" (Links to Hexcodes in Registry Sheet)
   var targetRangeInBlends = targetSheet.getRange(BLENDER.PRETTY.DATA_START_ROW, prettyColInBlends, totalRows, 1);
   targetRangeInBlends.setBackground(null);
-  targetRangeInBlends.setValues(rawValuesInBlends);
   
-  // Link to Blends Sheet (External Sheet)
+  // *** SAFEGUARD: FORCE PLAIN TEXT FOR HEXCODES ***
+  targetRangeInBlends.setNumberFormat('@'); 
+  
+  targetRangeInBlends.setValues(rawValuesInBlends);
   applyLinksToRange(targetRangeInBlends, "BLENDS");
 
-  // Run the invalid name highlighter on the Ladies column only
-  highlightChipDuplicates(targetSheet);
+  // Optional: Highlight invalid names
+  if (typeof highlightChipDuplicates === 'function') {
+    highlightChipDuplicates(targetSheet);
+  }
 
   if (!isSilent) {
-    SpreadsheetApp.getUi().alert("Synced " + totalRows + " rows (both columns) from Raw Sheet.");
+    SpreadsheetApp.getUi().alert("Synced " + totalRows + " rows from Raw Sheet.");
   }
 }
 
@@ -468,10 +465,6 @@ function highlightChipDuplicates(sheet) {
   });
 }
 
-/**
- * 1. SYNC REGISTRY -> RAW
- * Reads Registry, Alphabetizes/Links Registry, Updates Raw 'blended with...' and 'in blends...' columns.
- */
 function syncRegistryToPeople() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rawSheet = ss.getSheetByName(BLENDER.RAW.SHEET_NAME);  
@@ -486,17 +479,14 @@ function syncRegistryToPeople() {
   const regHeaders = regSheet.getRange(1, 1, 1, regSheet.getLastColumn()).getValues()[0];
   const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
 
-  // Registry Columns
-  const regBlendColIdx = regHeaders.indexOf(BLENDER.REGISTRY.WITH_COL_NAME); // "blendees"
+  const regBlendColIdx = regHeaders.indexOf(BLENDER.REGISTRY.WITH_COL_NAME); 
   let regHexColIdx = regHeaders.indexOf("Hexcode"); 
-  if (regHexColIdx === -1) regHexColIdx = 0; // Fallback to Col A
+  if (regHexColIdx === -1) regHexColIdx = 0; 
 
-  // Raw Columns
   const rawNameColIdx = rawHeaders.indexOf("NAME");
-  const rawPartnersColIdx = rawHeaders.indexOf(BLENDER.WITH_HEADER); // "blended with…"
-  const rawHexcodesColIdx = rawHeaders.indexOf(BLENDER.IN_HEADER);   // "in blends…"
+  const rawPartnersColIdx = rawHeaders.indexOf(BLENDER.WITH_HEADER); 
+  const rawHexcodesColIdx = rawHeaders.indexOf(BLENDER.IN_HEADER);   
 
-  // Safety Check
   const missing = [];
   if (regBlendColIdx === -1) missing.push(`'${BLENDER.REGISTRY.WITH_COL_NAME}' in Registry`);
   if (rawNameColIdx === -1) missing.push(`'NAME' in Raw`);
@@ -510,15 +500,13 @@ function syncRegistryToPeople() {
 
   // --- 2. READ REGISTRY ---
   const lastRegRow = regSheet.getLastRow();
-  // Protect against empty sheet errors
   if (lastRegRow < BLENDER.REGISTRY.DATA_START_ROW) return;
 
   const regData = regSheet.getRange(BLENDER.REGISTRY.DATA_START_ROW, 1, lastRegRow - BLENDER.REGISTRY.DATA_START_ROW + 1, regSheet.getLastColumn()).getValues();
   
-  const connections = {};      // Map: Name -> Set of Partner Names
-  const blendInclusions = {};  // Map: Name -> Set of Hexcodes
-  
-  const cleanBlendColumn = []; // To store sorted string for write-back
+  const connections = {};      
+  const blendInclusions = {};  
+  const cleanBlendColumn = []; 
 
   regData.forEach(row => {
     let blendString = row[regBlendColIdx]; 
@@ -526,20 +514,17 @@ function syncRegistryToPeople() {
     let sortedString = "";
 
     if (blendString) {
-      // Split, Trim, Sort
       const participants = blendString.toString().split(",").map(p => p.trim()).filter(p => p);
       participants.sort(); 
       sortedString = participants.join(", ");
 
-      // Build Maps
       participants.forEach(person => {
         if (!connections[person]) connections[person] = new Set();
         if (!blendInclusions[person]) blendInclusions[person] = new Set();
         
-        // Map Hexcode to Person
+        // Ensure hexcode is string
         if (hexcode) blendInclusions[person].add(hexcode.toString().trim());
 
-        // Map Partners to Person
         participants.forEach(partner => {
           if (person !== partner) connections[person].add(partner);
         });
@@ -548,12 +533,9 @@ function syncRegistryToPeople() {
     cleanBlendColumn.push([sortedString]);
   });
 
-  // --- 3. UPDATE REGISTRY (Alphabetize & Link) ---
-  // We overwrite the blendees column with the sorted version and ADD LINKS to the Pretty Sheet.
+  // --- 3. UPDATE REGISTRY ---
   var regTargetRange = regSheet.getRange(BLENDER.REGISTRY.DATA_START_ROW, regBlendColIdx + 1, cleanBlendColumn.length, 1);
   regTargetRange.setValues(cleanBlendColumn);
-  
-  // Link these names back to the Pretty Sheet ("LADIES" mode)
   applyLinksToRange(regTargetRange, "LADIES"); 
   
   console.log("Registry 'blendees' column sorted and linked.");
@@ -568,14 +550,14 @@ function syncRegistryToPeople() {
   peopleData.forEach(row => {
     const name = row[rawNameColIdx].toString().trim(); 
     
-    // A. Partners ("blended with…")
+    // A. Partners
     if (connections[name]) {
       outputPartners.push([Array.from(connections[name]).sort().join(", ")]);
     } else {
       outputPartners.push([""]); 
     }
 
-    // B. Hexcodes ("in blends…")
+    // B. Hexcodes
     if (blendInclusions[name]) {
       outputHexcodes.push([Array.from(blendInclusions[name]).sort().join(", ")]);
     } else {
@@ -583,14 +565,20 @@ function syncRegistryToPeople() {
     }
   });
 
-  // Write to Raw Sheet
+  // Write Partners
   rawSheet.getRange(BLENDER.RAW.DATA_START_ROW, rawPartnersColIdx + 1, outputPartners.length, 1).setValues(outputPartners);
-  rawSheet.getRange(BLENDER.RAW.DATA_START_ROW, rawHexcodesColIdx + 1, outputHexcodes.length, 1).setValues(outputHexcodes);
+  
+  // Write Hexcodes (WITH PLAIN TEXT SAFEGUARD)
+  var rawHexRange = rawSheet.getRange(BLENDER.RAW.DATA_START_ROW, rawHexcodesColIdx + 1, outputHexcodes.length, 1);
+  
+  // *** SAFEGUARD: FORCE PLAIN TEXT FOR HEXCODES ***
+  rawHexRange.setNumberFormat('@');
+  
+  rawHexRange.setValues(outputHexcodes);
   
   if (typeof generateMissingIDs === 'function') generateMissingIDs();
   console.log("Registry Sync Complete.");
 }
-
 
 function colorizeHexColumn() {
   /**
