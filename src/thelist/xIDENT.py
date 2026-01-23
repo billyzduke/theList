@@ -1,5 +1,5 @@
 import sys
-import bZdUtils
+from . import bZdUtils
 
 if __name__ == "__main__":
     # Check if the user actually provided a name

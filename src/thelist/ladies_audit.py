@@ -5,7 +5,7 @@ import sys
 
 # --- IMPORT LOCAL UTILS ---
 try:
-  import bZdUtils
+  from . import bZdUtils
 except ImportError:
   print("ERROR: Could not import 'bZdUtils'. Make sure bZdUtils.py is in the same directory.")
   sys.exit(1)

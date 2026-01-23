@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import time
-import bZdUtils
+from . import bZdUtils
 
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
