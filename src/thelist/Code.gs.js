@@ -17,6 +17,7 @@ var BLENDER = {
   'REGISTRY': {
     'SHEET_NAME': "blends",
     'WITH_COL_NAME': "blendees",
+    'GROUP_COL_NAME': "group",
     'DATA_START_ROW': 3
   }
 }
@@ -63,7 +64,7 @@ function onOpen() {
     .addItem('Refresh Hex Colors', 'colorizeHexColumn')
     .addSeparator() 
     .addItem('Sync & Link "blended with…" (From Raw to Pretty)', 'syncFromRaw') // Manual click = Not silent
-    .addItem('Export blend-data (.csv)', 'generateBlendDataExport')
+    .addItem('Export blend-data (.csv)', 'openBlendExportMenu')
     .addSeparator() 
     .addItem('Find Unpaired Blend Partners', 'findBrokenLinks')
     .addItem('Find Orphaned Artists (Unblended)', 'findOrphanedArtists')
@@ -888,43 +889,188 @@ function generateMissingIDs() {
   }
 }
 
-function generateBlendDataExport() {
-  /**
-   * EXPORT BLEND DATA
-   * Creates a new sheet named "blend-data" with a simple Source,Target list.
-   * Run this, then File > Download > CSV on the new sheet.
-   */
+/**
+ * UI TRIGGER: RUN THIS FUNCTION
+ * Opens a modal dialog to select a Group, then downloads the CSV directly.
+ */
+function openBlendExportMenu() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(BLENDER.PRETTY.SHEET_NAME);
   
   // --- CONFIG ---
-  var NAME_COL_INDEX = getColumnIndexByName(sheet, "NAME"); 
-  var BLEND_COL_INDEX = getBlendedWithColumnByName(sheet, BLENDER.WITH_HEADER); 
-  var START_ROW = BLENDER.PRETTY.DATA_START_ROW;
+  var REGISTRY_SHEET_NAME = BLENDER.REGISTRY.SHEET_NAME;
+  var GROUP_COL_HEADER = BLENDER.REGISTRY.GROUP_COL_NAME; 
+  var DATA_START_ROW = 3; 
+  // --------------
+  
+  var regSheet = ss.getSheetByName(REGISTRY_SHEET_NAME);
+  if (!regSheet) {
+    SpreadsheetApp.getUi().alert("Error: Could not find sheet named '" + REGISTRY_SHEET_NAME + "'");
+    return;
+  }
+
+  var groupCol = getColumnIndexByName(regSheet, GROUP_COL_HEADER);
+  var lastRow = regSheet.getLastRow();
+  
+  if (lastRow < DATA_START_ROW) {
+    SpreadsheetApp.getUi().alert("Registry sheet appears empty.");
+    return;
+  }
+
+  var rawGroups = regSheet.getRange(DATA_START_ROW, groupCol, lastRow - DATA_START_ROW + 1, 1).getValues().flat();
+  
+  var uniqueGroups = [...new Set(rawGroups)].filter(String).sort();
+
+  // HTML with CLIENT-SIDE DOWNLOAD LOGIC
+  var htmlString = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <base target="_top">
+        <style>
+          body { font-family: sans-serif; padding: 10px; }
+          select { width: 100%; padding: 8px; margin-bottom: 15px; }
+          button { background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+          button:hover { background: #357ae8; }
+          .loader { display: none; color: #666; font-size: 12px; margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <h3>Select Filter Group</h3>
+        <p>Choose which group of blends to export:</p>
+        
+        <select id="groupSelect">
+          <option value="ALL_DATA">-- EXPORT ALL (No Filter) --</option>
+          ${uniqueGroups.map(g => `<option value="${g}">${g}</option>`).join('')}
+        </select>
+        
+        <button onclick="runExport()">Download CSV</button>
+        <div id="status" class="loader">Processing... download will start automatically.</div>
+
+        <script>
+          function runExport() {
+            var group = document.getElementById('groupSelect').value;
+            document.getElementById('status').style.display = 'block';
+            
+            google.script.run
+              .withSuccessHandler(function(csvContent) {
+                 if (!csvContent) {
+                    alert("No data found for this group.");
+                    google.script.host.close();
+                    return;
+                 }
+                 
+                 // 1. Create a Blob from the CSV string
+                 var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                 
+                 // 2. Create a temporary link to trigger download
+                 var link = document.createElement("a");
+                 if (link.download !== undefined) { 
+                    var url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", "blend-data-" + group.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".csv");
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                 }
+                 
+                 // 3. Close the modal
+                 google.script.host.close();
+              })
+              .withFailureHandler(function(err) { 
+                 alert("Error: " + err); 
+                 google.script.host.close(); 
+              })
+              .generateBlendDataExport(group);
+          }
+        </script>
+      </body>
+    </html>
+  `;
+
+  var html = HtmlService.createHtmlOutput(htmlString).setWidth(350).setHeight(250);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Export Config');
+}
+
+/**
+ * MAIN WORKER FUNCTION (RETURNS CSV STRING)
+ */
+function generateBlendDataExport(selectedGroup) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var rawSheet = ss.getSheetByName(BLENDER.RAW.SHEET_NAME);
+  var regSheet = ss.getSheetByName(BLENDER.REGISTRY.SHEET_NAME);
+
+  // --- CONFIG ---
+  var HEADER_ROW_INDEX = 0; 
+  var REGISTRY_PARENT_COLS = [BLENDER.REGISTRY.WITH_COL_NAME]; 
+  var REGISTRY_GROUP_COL = BLENDER.REGISTRY.GROUP_COL_NAME;
+  var REGISTRY_DATA_START_ROW = 3; 
   // --------------
 
-  var lastRow = sheet.getLastRow();
-  var data = sheet.getRange(START_ROW, 1, lastRow - START_ROW + 1, Math.max(NAME_COL_INDEX, BLEND_COL_INDEX)).getValues();
+  // 1. BUILD ALLOW-LIST
+  var allowedNames = new Set();
+  var isFiltering = (selectedGroup && selectedGroup !== "ALL_DATA");
+
+  if (isFiltering) {
+    var regData = regSheet.getDataRange().getValues();
+    var headers = regData[HEADER_ROW_INDEX];
+    
+    var colMap = {};
+    headers.forEach((h, i) => colMap[h] = i);
+    
+    var groupIdx = colMap[REGISTRY_GROUP_COL];
+    var parentIndices = REGISTRY_PARENT_COLS.map(name => colMap[name]).filter(i => i !== undefined);
+
+    if (groupIdx === undefined || parentIndices.length === 0) {
+      throw new Error("Column headers not found. Check Config.");
+    }
+
+    for (var i = REGISTRY_DATA_START_ROW - 1; i < regData.length; i++) {
+      var row = regData[i];
+      if (row[groupIdx].toString() == selectedGroup.toString()) {
+        parentIndices.forEach(idx => {
+          var rawCell = row[idx].toString();
+          if (rawCell) {
+            var namesInCell = rawCell.split(",");
+            namesInCell.forEach(function(n) {
+              var cleanName = n.trim();
+              if (cleanName) allowedNames.add(cleanName);
+            });
+          }
+        });
+      }
+    }
+    
+    if (allowedNames.size === 0) return null; // Signal no data
+  }
+
+  // 2. PROCESS RAW EDGES
+  var nameColIdx = getColumnIndexByName(rawSheet, "NAME"); 
+  var blendColIdx = getBlendedWithColumnByName(rawSheet, BLENDER.WITH_HEADER); 
+  var startRow = BLENDER.RAW.DATA_START_ROW;
   
-  var exportRows = [["Source", "Target", "Type"]]; // Header for Gephi
+  var lastRow = rawSheet.getLastRow();
+  var data = rawSheet.getRange(startRow, 1, lastRow - startRow + 1, Math.max(nameColIdx, blendColIdx)).getValues();
+  
+  var exportRows = [["Source", "Target", "Type", "FilterGroup"]]; 
   var seenPairs = new Set();
 
   for (var i = 0; i < data.length; i++) {
-    var source = data[i][NAME_COL_INDEX - 1].toString().trim();
-    var targetsRaw = data[i][BLEND_COL_INDEX - 1].toString();
+    var source = data[i][nameColIdx - 1].toString().trim();
+    var targetsRaw = data[i][blendColIdx - 1].toString();
+
+    if (isFiltering && !allowedNames.has(source)) continue;
 
     if (source && targetsRaw) {
       var targets = targetsRaw.split(",");
-      
       targets.forEach(function(target) {
         var t = target.trim();
         if (t !== "") {
-          // Create a unique key (A|B) sorting them ensures A->B and B->A are treated as one link
+          if (isFiltering && !allowedNames.has(t)) return;
+
           var pairKey = [source, t].sort().join("|");
-          
-          // Only add if we haven't seen this connection yet
           if (!seenPairs.has(pairKey)) {
-            exportRows.push([source, t, "Undirected"]);
+            exportRows.push([source, t, "Undirected", selectedGroup]);
             seenPairs.add(pairKey);
           }
         }
@@ -932,19 +1078,21 @@ function generateBlendDataExport() {
     }
   }
 
-  // Create or Overwrite the Export Sheet
-  var exportSheetName = "blend-data";
-  var exportSheet = ss.getSheetByName(exportSheetName);
-  if (exportSheet) {
-    exportSheet.clear();
-  } else {
-    exportSheet = ss.insertSheet(exportSheetName);
-  }
+  if (exportRows.length <= 1) return null;
 
-  // Paste Data
-  exportSheet.getRange(1, 1, exportRows.length, 3).setValues(exportRows);
-  
-  SpreadsheetApp.getUi().alert("Export Ready! Go to the 'blend-data' sheet tab and select File > Download > Comma Separated Values (.csv).");
+  // 3. GENERATE CSV STRING (Robust Quoting)
+  var csvString = exportRows.map(function(row) {
+    return row.map(function(field) {
+      var str = field.toString();
+      // Quote field if it contains comma, quote, or newline
+      if (str.search(/("|,|\n)/g) >= 0) {
+        str = '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }).join(",");
+  }).join("\n");
+
+  return csvString;
 }
 
 /**
