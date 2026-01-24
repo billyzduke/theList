@@ -15,9 +15,11 @@ var BLENDER = {
     'SHEET_NAME': "blendus og"
   },
   'REGISTRY': {
+    'BLEND_ID_COL_NAME': "hexcode",
     'SHEET_NAME': "blends",
     'WITH_COL_NAME': "blendees",
     'GROUP_COL_NAME': "group",
+    'PUB_COL_NAME': "published",
     'DATA_START_ROW': 3
   }
 }
@@ -891,7 +893,7 @@ function generateMissingIDs() {
 
 /**
  * UI TRIGGER: RUN THIS FUNCTION
- * Opens a modal dialog to select a Group, then downloads the CSV directly.
+ * Opens a modal dialog with Group AND Published filters.
  */
 function openBlendExportMenu() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -916,31 +918,38 @@ function openBlendExportMenu() {
     return;
   }
 
+  // Get unique groups for the dropdown
   var rawGroups = regSheet.getRange(DATA_START_ROW, groupCol, lastRow - DATA_START_ROW + 1, 1).getValues().flat();
-  
   var uniqueGroups = [...new Set(rawGroups)].filter(String).sort();
 
-  // HTML with CLIENT-SIDE DOWNLOAD LOGIC
+  // HTML UI
   var htmlString = `
     <!DOCTYPE html>
     <html>
       <head>
         <base target="_top">
         <style>
-          body { font-family: sans-serif; padding: 10px; }
-          select { width: 100%; padding: 8px; margin-bottom: 15px; }
-          button { background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+          body { font-family: sans-serif; padding: 15px; }
+          label { font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
+          select { width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+          button { background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
           button:hover { background: #357ae8; }
-          .loader { display: none; color: #666; font-size: 12px; margin-top: 10px; }
+          .loader { display: none; color: #666; font-size: 12px; margin-top: 10px; text-align: center; }
         </style>
       </head>
       <body>
-        <h3>Select Filter Group</h3>
-        <p>Choose which group of blends to export:</p>
         
+        <label for="groupSelect">Filter by Group</label>
         <select id="groupSelect">
-          <option value="ALL_DATA">-- EXPORT ALL (No Filter) --</option>
+          <option value="ALL_DATA">-- ALL GROUPS --</option>
           ${uniqueGroups.map(g => `<option value="${g}">${g}</option>`).join('')}
+        </select>
+
+        <label for="publishSelect">Filter by Status</label>
+        <select id="publishSelect">
+          <option value="ALL">-- ALL (Published & Unpublished) --</option>
+          <option value="PUBLISHED">Published Only</option>
+          <option value="UNPUBLISHED">Unpublished Only</option>
         </select>
         
         <button onclick="runExport()">Download CSV</button>
@@ -949,53 +958,58 @@ function openBlendExportMenu() {
         <script>
           function runExport() {
             var group = document.getElementById('groupSelect').value;
+            var pubStatus = document.getElementById('publishSelect').value;
+            
             document.getElementById('status').style.display = 'block';
             
             google.script.run
               .withSuccessHandler(function(csvContent) {
-                 if (!csvContent) {
-                    alert("No data found for this group.");
-                    google.script.host.close();
-                    return;
-                 }
-                 
-                 // 1. Create a Blob from the CSV string
-                 var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                 
-                 // 2. Create a temporary link to trigger download
-                 var link = document.createElement("a");
-                 if (link.download !== undefined) { 
-                    var url = URL.createObjectURL(blob);
-                    link.setAttribute("href", url);
-                    link.setAttribute("download", "blend-data-" + group.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".csv");
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                 }
-                 
-                 // 3. Close the modal
-                 google.script.host.close();
+                if (!csvContent) {
+                  alert("No data found matching these filters.");
+                  google.script.host.close();
+                  return;
+                }
+                
+                var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                var link = document.createElement("a");
+                if (link.download !== undefined) { 
+                  var url = URL.createObjectURL(blob);
+                  link.setAttribute("href", url);
+                  
+                  // Generate filename based on filters
+                  var filename = "blend-data";
+                  if (group !== "ALL_DATA") filename += "-" + group.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                  if (pubStatus === "PUBLISHED") filename += "-pub";
+                  if (pubStatus === "UNPUBLISHED") filename += "-unpub";
+                  
+                  link.setAttribute("download", filename + ".csv");
+                  link.style.visibility = 'hidden';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }
+                google.script.host.close();
               })
               .withFailureHandler(function(err) { 
-                 alert("Error: " + err); 
-                 google.script.host.close(); 
+                alert("Error: " + err); 
+                google.script.host.close(); 
               })
-              .generateBlendDataExport(group);
+              .generateBlendDataExport(group, pubStatus);
           }
         </script>
       </body>
     </html>
   `;
 
-  var html = HtmlService.createHtmlOutput(htmlString).setWidth(350).setHeight(250);
+  var html = HtmlService.createHtmlOutput(htmlString).setWidth(350).setHeight(320);
   SpreadsheetApp.getUi().showModalDialog(html, 'Export Config');
 }
 
 /**
- * MAIN WORKER FUNCTION (RETURNS CSV STRING)
+ * MAIN WORKER FUNCTION (HEXCODE-AWARE)
+ * Uses the specific 'hexcode' column to validate relationships.
  */
-function generateBlendDataExport(selectedGroup) {
+function generateBlendDataExport(selectedGroup, publishFilter) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var rawSheet = ss.getSheetByName(BLENDER.RAW.SHEET_NAME);
   var regSheet = ss.getSheetByName(BLENDER.REGISTRY.SHEET_NAME);
@@ -1004,45 +1018,73 @@ function generateBlendDataExport(selectedGroup) {
   var HEADER_ROW_INDEX = 0; 
   var REGISTRY_PARENT_COLS = [BLENDER.REGISTRY.WITH_COL_NAME]; 
   var REGISTRY_GROUP_COL = BLENDER.REGISTRY.GROUP_COL_NAME;
+  var PUBLISHED_COL_HEADER = BLENDER.REGISTRY.PUB_COL_NAME;
+  var REGISTRY_ID_COL_NAME = BLENDER.REGISTRY.BLEND_ID_COL_NAME; 
+  
   var REGISTRY_DATA_START_ROW = 3; 
   // --------------
 
-  // 1. BUILD ALLOW-LIST
-  var allowedNames = new Set();
-  var isFiltering = (selectedGroup && selectedGroup !== "ALL_DATA");
+  // 1. BUILD RELATIONSHIP MAP
+  // Maps Name -> Set of Hexcodes they belong to
+  var nameToHexCodes = {};
+  var isFiltering = (selectedGroup !== "ALL_DATA") || (publishFilter !== "ALL");
 
-  if (isFiltering) {
-    var regData = regSheet.getDataRange().getValues();
-    var headers = regData[HEADER_ROW_INDEX];
-    
-    var colMap = {};
-    headers.forEach((h, i) => colMap[h] = i);
-    
-    var groupIdx = colMap[REGISTRY_GROUP_COL];
-    var parentIndices = REGISTRY_PARENT_COLS.map(name => colMap[name]).filter(i => i !== undefined);
+  var regData = regSheet.getDataRange().getValues();
+  var headers = regData[HEADER_ROW_INDEX];
+  
+  var colMap = {};
+  headers.forEach((h, i) => colMap[h] = i);
+  
+  var groupIdx = colMap[REGISTRY_GROUP_COL];
+  var pubIdx = colMap[PUBLISHED_COL_HEADER];
+  var idIdx = colMap[REGISTRY_ID_COL_NAME]; // Index of hexcode column
+  var parentIndices = REGISTRY_PARENT_COLS.map(name => colMap[name]).filter(i => i !== undefined);
 
-    if (groupIdx === undefined || parentIndices.length === 0) {
-      throw new Error("Column headers not found. Check Config.");
-    }
-
-    for (var i = REGISTRY_DATA_START_ROW - 1; i < regData.length; i++) {
-      var row = regData[i];
-      if (row[groupIdx].toString() == selectedGroup.toString()) {
-        parentIndices.forEach(idx => {
-          var rawCell = row[idx].toString();
-          if (rawCell) {
-            var namesInCell = rawCell.split(",");
-            namesInCell.forEach(function(n) {
-              var cleanName = n.trim();
-              if (cleanName) allowedNames.add(cleanName);
-            });
-          }
-        });
-      }
-    }
-    
-    if (allowedNames.size === 0) return null; // Signal no data
+  // Safety Check
+  if (groupIdx === undefined || idIdx === undefined || parentIndices.length === 0) {
+    throw new Error("Critical columns missing. Check headers.");
   }
+
+  // Scan Registry
+  var validRowCount = 0;
+  for (var i = REGISTRY_DATA_START_ROW - 1; i < regData.length; i++) {
+    var row = regData[i];
+    
+    // Get the Unique Hexcode for this blend
+    var hexID = row[idIdx].toString().trim();
+    if (!hexID) continue; // Skip rows without a hexcode
+
+    var rowGroup = row[groupIdx].toString();
+    var rowPubValue = (pubIdx !== undefined) ? row[pubIdx].toString().trim() : "";
+    
+    // FILTER LOGIC
+    var groupMatch = (selectedGroup === "ALL_DATA") || (rowGroup == selectedGroup.toString());
+    var pubMatch = true;
+    if (publishFilter === "PUBLISHED") pubMatch = (rowPubValue !== ""); 
+    else if (publishFilter === "UNPUBLISHED") pubMatch = (rowPubValue === ""); 
+    
+    // If this Blend is valid based on filters...
+    if (groupMatch && pubMatch) {
+      validRowCount++;
+      
+      // Map every participant in this blend to this specific Hexcode
+      parentIndices.forEach(idx => {
+        var rawCell = row[idx].toString();
+        if (rawCell) {
+          var namesInCell = rawCell.split(",");
+          namesInCell.forEach(function(n) {
+            var cleanName = n.trim();
+            if (cleanName) {
+              if (!nameToHexCodes[cleanName]) nameToHexCodes[cleanName] = new Set();
+              nameToHexCodes[cleanName].add(hexID); 
+            }
+          });
+        }
+      });
+    }
+  }
+  
+  if (isFiltering && validRowCount === 0) return null; 
 
   // 2. PROCESS RAW EDGES
   var nameColIdx = getColumnIndexByName(rawSheet, "NAME"); 
@@ -1052,26 +1094,58 @@ function generateBlendDataExport(selectedGroup) {
   var lastRow = rawSheet.getLastRow();
   var data = rawSheet.getRange(startRow, 1, lastRow - startRow + 1, Math.max(nameColIdx, blendColIdx)).getValues();
   
-  var exportRows = [["Source", "Target", "Type", "FilterGroup"]]; 
+  var exportRows = [["Source", "Target", "Type", "FilterGroup", "FilterStatus"]]; 
   var seenPairs = new Set();
 
   for (var i = 0; i < data.length; i++) {
     var source = data[i][nameColIdx - 1].toString().trim();
     var targetsRaw = data[i][blendColIdx - 1].toString();
 
-    if (isFiltering && !allowedNames.has(source)) continue;
+    // Optimization: If Source isn't in ANY valid blend (hexcode), skip
+    if (isFiltering && !nameToHexCodes[source]) continue;
 
     if (source && targetsRaw) {
       var targets = targetsRaw.split(",");
       targets.forEach(function(target) {
         var t = target.trim();
         if (t !== "") {
-          if (isFiltering && !allowedNames.has(t)) return;
+          
+          var isValidLink = true;
 
-          var pairKey = [source, t].sort().join("|");
-          if (!seenPairs.has(pairKey)) {
-            exportRows.push([source, t, "Undirected", selectedGroup]);
-            seenPairs.add(pairKey);
+          if (isFiltering) {
+             // CONNECTION CHECK:
+             // Do Source and Target share at least one Hexcode?
+            var sourceCodes = nameToHexCodes[source];
+            var targetCodes = nameToHexCodes[t];
+            
+            if (!targetCodes) {
+              isValidLink = false;
+            } else {
+              // Intersection Check
+              var intersection = false;
+              var [smallSet, largeSet] = (sourceCodes.size < targetCodes.size) 
+                ? [sourceCodes, targetCodes] 
+                : [targetCodes, sourceCodes];
+              
+              var it = smallSet.values();
+              var val = it.next();
+              while (!val.done) {
+                if (largeSet.has(val.value)) {
+                  intersection = true;
+                  break;
+                }
+                val = it.next();
+              }
+              isValidLink = intersection;
+            }
+          }
+
+          if (isValidLink) {
+            var pairKey = [source, t].sort().join("|");
+            if (!seenPairs.has(pairKey)) {
+              exportRows.push([source, t, "Undirected", selectedGroup, publishFilter]);
+              seenPairs.add(pairKey);
+            }
           }
         }
       });
@@ -1080,11 +1154,10 @@ function generateBlendDataExport(selectedGroup) {
 
   if (exportRows.length <= 1) return null;
 
-  // 3. GENERATE CSV STRING (Robust Quoting)
+  // 3. GENERATE CSV STRING
   var csvString = exportRows.map(function(row) {
     return row.map(function(field) {
       var str = field.toString();
-      // Quote field if it contains comma, quote, or newline
       if (str.search(/("|,|\n)/g) >= 0) {
         str = '"' + str.replace(/"/g, '""') + '"';
       }
