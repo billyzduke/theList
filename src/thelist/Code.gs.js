@@ -1094,7 +1094,7 @@ function generateBlendDataExport(selectedGroup, publishFilter) {
   var lastRow = rawSheet.getLastRow();
   var data = rawSheet.getRange(startRow, 1, lastRow - startRow + 1, Math.max(nameColIdx, blendColIdx)).getValues();
   
-  var exportRows = [["Source", "Target", "Type", "FilterGroup", "FilterStatus"]]; 
+  var exportRows = [["Source", "Target", "Type", "Hex", "FilterGroup", "FilterStatus"]]; 
   var seenPairs = new Set();
 
   for (var i = 0; i < data.length; i++) {
@@ -1131,7 +1131,7 @@ function generateBlendDataExport(selectedGroup, publishFilter) {
               var val = it.next();
               while (!val.done) {
                 if (largeSet.has(val.value)) {
-                  intersection = true;
+                  intersection = val.value;
                   break;
                 }
                 val = it.next();
@@ -1143,7 +1143,7 @@ function generateBlendDataExport(selectedGroup, publishFilter) {
           if (isValidLink) {
             var pairKey = [source, t].sort().join("|");
             if (!seenPairs.has(pairKey)) {
-              exportRows.push([source, t, "Undirected", selectedGroup, publishFilter]);
+              exportRows.push([source, t, "Undirected", isValidLink, selectedGroup, publishFilter]);
               seenPairs.add(pairKey);
             }
           }

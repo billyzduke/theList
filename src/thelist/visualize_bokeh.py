@@ -52,6 +52,18 @@ df = pd.read_csv(CSV_FILE_PATH)
 df['Source'] = df['Source'].apply(clean_string)
 df['Target'] = df['Target'].apply(clean_string)
 
+if 'Hex' not in df.columns:
+  print("  [Note] 'Hex' column missing. Creating default.")
+  df['Hex'] = '#00FFFF' 
+
+def clean_hex(h):
+  h = str(h).strip()
+  if h.lower() == 'nan' or h == '': return '#888888'
+  if not h.startswith('#'): return f'#{h}'
+  return h
+
+df['Hex'] = df['Hex'].apply(clean_hex)
+
 sources = df['Source'].value_counts()
 targets = df['Target'].value_counts()
 degree_counts = sources.add(targets, fill_value=0)
@@ -65,19 +77,29 @@ name_to_index_map = {name: i for i, name in enumerate(sorted_names)}
 
 print(f"Processing {len(sorted_names)} nodes...")
 
-adjacency = {name: [] for name in sorted_names}
+adjacency_data = {name: [] for name in sorted_names}
+
 for _, r in df.iterrows():
-  s, t = r['Source'], r['Target']
-  if s in adjacency: adjacency[s].append(t)
-  if t in adjacency: adjacency[t].append(s)
+  s, t, h = r['Source'], r['Target'], r['Hex']
+  if s in adjacency_data: adjacency_data[s].append((t, h))
+  if t in adjacency_data: adjacency_data[t].append((s, h))
 
 node_metadata = {}
 for name in sorted_names:
-  partners = sorted(adjacency[name])
-  p_str = ",".join(partners)
+  pairs = sorted(adjacency_data[name], key=lambda x: x[0])
+  if pairs:
+    partners_only = [p[0] for p in pairs]
+    hexes_only = [p[1] for p in pairs]
+    p_str = ",".join(partners_only)
+    h_str = ",".join(hexes_only)
+  else:
+    p_str = ""
+    h_str = ""
+    
   node_metadata[name] = {
     'popularity': int(degree_counts[name]),
-    'partners': p_str
+    'partners': p_str,
+    'hexes': h_str 
   }
 
 # --- COLOR LOGIC ---
@@ -128,7 +150,7 @@ def calculate_layout(nodes, links_df):
     mid_norm = mid % (2 * np.pi)
     node_angle_map[node] = mid_norm
     
-    meta = node_metadata.get(node, {'popularity': 0, 'partners': ''})
+    meta = node_metadata.get(node, {'popularity': 0, 'partners': '', 'hexes': ''})
     
     points = 15 
     angles = np.linspace(start, end, points)
@@ -159,6 +181,7 @@ def calculate_layout(nodes, links_df):
       'color': node_color_map[node],
       'popularity': meta['popularity'],
       'partners_list': meta['partners'],
+      'partners_hex_list': meta['hexes'], 
       'poly_xs': poly_xs,
       'poly_ys': poly_ys,
       'label_x': lx,
@@ -169,7 +192,7 @@ def calculate_layout(nodes, links_df):
       'text_angle': text_angle,
       'base_text_angle': text_angle,
       'text_align': text_align,
-      'base_text_align': text_align, # ADDED: Base align for reset
+      'base_text_align': text_align,
       'font_size': '9px',
       'text_color': '#666666'
     })
@@ -181,7 +204,7 @@ def calculate_layout(nodes, links_df):
     if src not in node_angle_map or tgt not in node_angle_map: continue
     
     a1, a2 = node_angle_map[src], node_angle_map[tgt]
-    c = "#666666" 
+    c = "#888888" 
     
     link_data.append({
       'source_name': src,
@@ -190,7 +213,8 @@ def calculate_layout(nodes, links_df):
       'x1': np.cos(a2), 'y1': np.sin(a2),
       'cx0': 0, 'cy0': 0, 'cx1': 0, 'cy1': 0,
       'color': c,
-      'base_color': c, 
+      'base_color': c,
+      'highlight_hex': link_row['Hex'], 
       'line_alpha': 0.4, 
       'line_width': 1
     })
@@ -202,7 +226,6 @@ nodes_df, links_df = calculate_layout(sorted_names, df)
 # ==========================================
 # 4. PLOTTING SETUP
 # ==========================================
-# KEY CHANGE: Added names to sources for JS lookup
 node_source = ColumnDataSource(nodes_df, name="node_source")
 link_source = ColumnDataSource(links_df, name="link_source")
 
@@ -217,6 +240,19 @@ p.border_fill_color = "#101010"
 p.outline_line_color = None
 p.axis.visible = False
 p.grid.visible = False
+
+# --- INNER BACKGROUND (VOID) ---
+bg_theta = np.linspace(0, 2*np.pi, 100)
+bg_xs = np.cos(bg_theta)
+bg_ys = np.sin(bg_theta)
+
+void_renderer = p.patch(
+  x=bg_xs, y=bg_ys,
+  fill_color="#222222", 
+  line_color=None,
+  level='image',
+  name='void_patch'
+)
 
 p.bezier(
   x0="x0", y0="y0", x1="x1", y1="y1", 
@@ -252,15 +288,69 @@ labels = LabelSet(
 p.add_layout(labels)
 
 # ==========================================
-# 5. JS LOGIC (HOVER)
+# 5. JS LOGIC (OFFSET ADJUSTMENTS)
 # ==========================================
 name_map_json = json.dumps(name_to_index_map)
 
 code_hover = f"""
+  // 1. HELPER FUNCTIONS
+  function interpolateColor(factor) {{
+    const base = 102; 
+    const target = 170; 
+    const val = Math.round(base + (target - base) * factor);
+    return `rgb(${{val}}, ${{val}}, ${{val}})`;
+  }}
+
+  function getLuminance(hex) {{
+    hex = hex.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    const R = (r <= 0.03928) ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+    const G = (g <= 0.03928) ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+    const B = (b <= 0.03928) ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+    return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+  }}
+
+  function animateVoidColor() {{
+      const state = window.voidAnim;
+      const diff = state.targetVal - state.currentVal;
+      
+      if (Math.abs(diff) < 0.5) {{
+          state.currentVal = state.targetVal;
+          state.reqId = null;
+      }} else {{
+          state.currentVal += diff * 0.1;
+          state.reqId = requestAnimationFrame(animateVoidColor);
+      }}
+      
+      const v = Math.floor(state.currentVal);
+      const colorStr = `rgb(${{v}}, ${{v}}, ${{v}})`;
+      
+      window.voidGlyph.fill_color = colorStr;
+      window.voidRenderer.change.emit(); 
+      
+      const miniBg = document.getElementById('mini-graph-bg');
+      if (miniBg) {{
+          miniBg.setAttribute('fill', colorStr);
+      }}
+  }}
+  
+  function setVoidTarget(val) {{
+      window.voidAnim.targetVal = val;
+      if (!window.voidAnim.reqId) {{
+          window.voidAnim.reqId = requestAnimationFrame(animateVoidColor);
+      }}
+  }}
+
+  // 2. DATA SETUP
   const nodes = node_source.data;
   const links = link_source.data;
   const name_map = {name_map_json};
   const panel = document.getElementById('details-panel');
+  
+  window.voidRenderer = void_renderer;
+  window.voidGlyph = void_renderer.glyph;
   
   if (!cb_data.geometry) return;
   
@@ -274,13 +364,11 @@ code_hover = f"""
   const MAX_SIZE = 26; 
   const REPULSION_STRENGTH = 0.05; 
   
-  function interpolateColor(factor) {{
-    const base = 102; 
-    const target = 170; 
-    const val = Math.round(base + (target - base) * factor);
-    return `rgb(${{val}}, ${{val}}, ${{val}})`;
+  if (!window.voidAnim) {{
+      window.voidAnim = {{ currentVal: 34, targetVal: 34, reqId: null }}; // #222222
   }}
   
+  // 3. LOGIC START
   let min_dist_mouse = 1000;
   let main_idx = -1;
   const n_len = nodes['name'].length;
@@ -383,83 +471,121 @@ code_hover = f"""
   }}
   
   const l_len = links['source_name'].length;
+  let active_hex = null;
+  
   for (let k = 0; k < l_len; k++) {{
     links['line_alpha'][k] = 0.4;
     links['line_width'][k] = 1;
-    links['color'][k] = links['base_color'][k];
+    links['color'][k] = links['base_color'][k]; 
   }}
 
   if (primary_well) {{
     const active_name = nodes['name'][main_idx];
     const p_str = nodes['partners_list'][main_idx];
     const partners = (p_str && p_str.length > 0) ? p_str.split(',') : [];
+    
+    const p_hex_str = nodes['partners_hex_list'][main_idx];
+    const partner_hexes = (p_hex_str && p_hex_str.length > 0) ? p_hex_str.split(',') : [];
 
     for (let k = 0; k < l_len; k++) {{
       if (links['source_name'][k] === active_name || links['target_name'][k] === active_name) {{
         links['line_alpha'][k] = 0.9;
         links['line_width'][k] = 2;
-        links['color'][k] = "#DDDDDD";
+        links['color'][k] = links['highlight_hex'][k];
+        if (!active_hex) active_hex = links['highlight_hex'][k];
       }}
+    }}
+    
+    if (active_hex) {{
+        const lum = getLuminance(active_hex);
+        const target_val = 51 * (1 - lum);
+        setVoidTarget(target_val);
     }}
     
     if (panel) {{
       const isSidePanel = (window.innerWidth / window.innerHeight) > 1.4; 
       let svg_content = "";
       
+      const cv = Math.floor(window.voidAnim.currentVal);
+      const initFill = `rgb(${{cv}}, ${{cv}}, ${{cv}})`;
+      
       if (!isSidePanel) {{
         // === BOTTOM PANEL (Portrait) ===
         const panel_w = panel.clientWidth || window.innerWidth;
         const panel_h = panel.clientHeight || (window.innerHeight * 0.25);
-        
         svg_content = `<svg width="100%" height="100%" style="font-family:Helvetica, sans-serif;">`;
         
-        const prim_x = panel_w * 0.45; // Right aligned to 45%
-        const part_x = panel_w * 0.55; // Left aligned to 55% (10% gap)
+        const spread_w = Math.min(panel_w - 60, partners.length * 150);
+        const center_x = panel_w / 2;
+        const center_y = panel_h / 2;
         
+        const ellipse_rx = Math.max(150, spread_w / 2 + 60); 
+        const ellipse_ry = 100;
+        
+        svg_content += `<ellipse id="mini-graph-bg" cx="${{center_x}}" cy="${{center_y}}" rx="${{ellipse_rx}}" ry="${{ellipse_ry}}" fill="${{initFill}}" />`;
+        
+        const prim_anchor_x = center_x - 30; 
+        const part_anchor_x = center_x + 30; 
         const row_height = 40;
         const stack_height = (partners.length - 1) * row_height;
-        const center_y = panel_h / 2;
         const start_y = center_y - (stack_height / 2);
         
         partners.forEach((p, idx) => {{
           const py = start_y + (idx * row_height);
-          // Horizontal Bezier
-          const path_d = `M ${{prim_x + 10}} ${{center_y}} C ${{prim_x + 30}} ${{center_y}}, ${{part_x - 30}} ${{py}}, ${{part_x - 10}} ${{py}}`;
-          
-          svg_content += `<path d="${{path_d}}" stroke="#DDDDDD" stroke-width="2" fill="none" opacity="0.9"/>`;
-          svg_content += `<text x="${{part_x}}" y="${{py}}" fill="#FFD1D1" font-size="28px" text-anchor="start" alignment-baseline="middle" style="text-shadow: 0px 0px 3px rgba(0,0,0,0.8);">${{p}}</text>`;
+          const path_d = `M ${{prim_anchor_x - 20}} ${{center_y}} C ${{prim_anchor_x + 20}} ${{center_y}}, ${{part_anchor_x - 20}} ${{py}}, ${{part_anchor_x + 20}} ${{py}}`;
+          const link_color = partner_hexes[idx] || "#DDDDDD";
+          svg_content += `<path d="${{path_d}}" stroke="${{link_color}}" stroke-width="2" fill="none" opacity="0.9"/>`;
+          svg_content += `<text x="${{part_anchor_x + 30}}" y="${{py}}" fill="#FFD1D1" font-size="28px" text-anchor="start" alignment-baseline="middle" style="text-shadow: 0px 0px 3px rgba(0,0,0,0.8);">${{p}}</text>`;
         }});
         
-        svg_content += `<text x="${{prim_x}}" y="${{center_y}}" fill="#E6FFE6" font-size="28px" font-weight="bold" text-anchor="end" alignment-baseline="middle" style="text-shadow: 0px 0px 4px rgba(0,0,0,0.8);">${{active_name}}</text>`;
+        svg_content += `<text x="${{prim_anchor_x - 30}}" y="${{center_y}}" fill="#E6FFE6" font-size="28px" font-weight="bold" text-anchor="end" alignment-baseline="middle" style="text-shadow: 0px 0px 4px rgba(0,0,0,0.8);">${{active_name}}</text>`;
         svg_content += `</svg>`;
-         
+        
       }} else {{
-        // === SIDE PANEL (Landscape) ===
+        // === SIDE PANEL (Landscape) - SHIFTED LEFT & DOWN ===
+        const panel_w = panel.clientWidth || (window.innerWidth * 0.25);
+        const panel_h = panel.clientHeight;
+        svg_content = `<svg width="100%" height="100%" style="font-family:Helvetica, sans-serif;">`;
+        
+        const center_x = panel_w / 2;
+        const center_y = panel_h / 2;
+        
         const row_height = 40;
-        const content_height = Math.max(200, partners.length * row_height + 100);
-        const svg_height = content_height;
+        const stack_height = Math.max(100, (partners.length - 1) * row_height);
         
-        const px_prim = 20;
-        const py_prim = 40;
-        const px_part = 150;
-        const start_y = py_prim + 50;
+        const ellipse_rx = Math.max(140, panel_w * 0.35); 
+        const ellipse_ry = Math.max(100, stack_height / 2 + 60); 
         
-        svg_content = `<svg width="100%" height="${{svg_height}}" style="font-family:Helvetica, sans-serif;">`;
+        svg_content += `<ellipse id="mini-graph-bg" cx="${{center_x}}" cy="${{center_y}}" rx="${{ellipse_rx}}" ry="${{ellipse_ry}}" fill="${{initFill}}" />`;
+        
+        // --- SHIFTED COORDINATES (Left 50px, Down 30px) ---
+        const content_top_y = center_y - (stack_height / 2) - 40;
+        
+        // Offset Left (px_prim -160, px_part -20)
+        const px_prim = center_x - 200; 
+        const px_part = center_x - 100; 
+        
+        // Offset Down (+30)
+        const prim_y = content_top_y + 20 + 42;
+        const list_start_y = content_top_y + 60 + 42;
         
         partners.forEach((p, idx) => {{
-          const py = start_y + (idx * row_height);
-          const path_d = `M ${{px_prim + 20}} ${{py_prim + 10}} C ${{px_prim + 20}} ${{py_prim + 50}}, ${{px_part - 50}} ${{py}}, ${{px_part}} ${{py}}`;
-          svg_content += `<path d="${{path_d}}" stroke="#DDDDDD" stroke-width="2" fill="none" opacity="0.9"/>`;
+          const py = list_start_y + (idx * row_height);
+          const path_d = `M ${{px_prim + 20}} ${{prim_y + 10}} C ${{px_prim + 20}} ${{prim_y + 50}}, ${{px_part - 50}} ${{py}}, ${{px_part}} ${{py}}`;
+          
+          const link_color = partner_hexes[idx] || "#DDDDDD";
+          svg_content += `<path d="${{path_d}}" stroke="${{link_color}}" stroke-width="2" fill="none" opacity="0.9"/>`;
           svg_content += `<text x="${{px_part + 10}}" y="${{py}}" fill="#FFD1D1" font-size="28px" alignment-baseline="middle" style="text-shadow: 0px 0px 3px rgba(0,0,0,0.8);">${{p}}</text>`;
         }});
         
-        svg_content += `<text x="${{px_prim}}" y="${{py_prim}}" fill="#E6FFE6" font-size="28px" font-weight="bold" alignment-baseline="middle" text-anchor="start" style="text-shadow: 0px 0px 4px rgba(0,0,0,0.8);">${{active_name}}</text>`;
+        svg_content += `<text x="${{px_prim}}" y="${{prim_y}}" fill="#E6FFE6" font-size="28px" font-weight="bold" alignment-baseline="middle" text-anchor="start" style="text-shadow: 0px 0px 4px rgba(0,0,0,0.8);">${{active_name}}</text>`;
         svg_content += `</svg>`;
       }}
       panel.innerHTML = svg_content;
     }}
     
   }} else {{
+    setVoidTarget(34);
     if (panel) {{
       panel.innerHTML = "";
     }}
@@ -467,10 +593,11 @@ code_hover = f"""
 
   node_source.change.emit();
   link_source.change.emit();
+  void_renderer.change.emit();
 """
 
 callback = CustomJS(
-  args=dict(node_source=node_source, link_source=link_source), 
+  args=dict(node_source=node_source, link_source=link_source, void_renderer=void_renderer), 
   code=code_hover
 )
 
@@ -497,27 +624,22 @@ body_idx = html_content.find('</body>')
 if body_idx != -1:
   insert_html = '<div id="details-panel"></div>'
   
-  # KEY CHANGE: Global Reset Script for Window Resize
   resize_script = """
   <script>
     window.addEventListener('resize', function() {
-      // 1. Clear Panel
       var panel = document.getElementById('details-panel');
       if(panel) panel.innerHTML = '';
 
-      // 2. Reset Bokeh Graph Sources
       if (typeof Bokeh !== 'undefined' && Bokeh.documents && Bokeh.documents.length > 0) {
         var doc = Bokeh.documents[0];
         var nodes = doc.get_model_by_name('node_source');
         var links = doc.get_model_by_name('link_source');
 
         if (nodes && links) {
-          // RESET NODES
           var n_len = nodes.data['name'].length;
           for (var i = 0; i < n_len; i++) {
             nodes.data['text_color'][i] = '#666666';
             nodes.data['font_size'][i] = '9px';
-            // Restore Base Geometry
             nodes.data['label_x'][i] = nodes.data['base_x'][i];
             nodes.data['label_y'][i] = nodes.data['base_y'][i];
             nodes.data['text_angle'][i] = nodes.data['base_text_angle'][i];
@@ -525,12 +647,11 @@ if body_idx != -1:
           }
           nodes.change.emit();
 
-          // RESET LINKS
           var l_len = links.data['source_name'].length;
           for (var k = 0; k < l_len; k++) {
             links.data['line_alpha'][k] = 0.4;
             links.data['line_width'][k] = 1;
-            links.data['color'][k] = '#666666';
+            links.data['color'][k] = '#888888';
           }
           links.change.emit();
         }
@@ -570,7 +691,7 @@ extra_css = """
     width: 100%;
     height: 25vh; 
     flex: 0 0 25vh;
-    background-color: #1a1a1a; 
+    background-color: #242424; 
     border-top: 1px solid #333;
     overflow-x: auto; 
     overflow-y: hidden;
