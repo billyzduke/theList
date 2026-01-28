@@ -26,7 +26,7 @@ SEARCH_URL_BASE = "https://www.imdb.com/find/?q={}&s=nm"
 # SKIP LOGIC
 # Set to "" to start from the beginning.
 # Set to a specific name (e.g., "Nina Gordon") to skip everything before it.
-START_FROM_NAME = "Julie Ritter" 
+START_FROM_NAME = "Alithea Tuttle" 
 
 # --- ENSURE DIRECTORY EXISTS ---
 if not os.path.exists(OUTPUT_DIR):
@@ -42,7 +42,8 @@ def init_driver():
 
 # 2. HELPER: PARSE DATE
 def parse_imdb_date(date_str):
-  if not date_str: return ""
+  if not date_str:
+    return ""
   date_str = date_str.strip()
   try:
     dt = datetime.strptime(date_str, "%B %d, %Y")
@@ -50,7 +51,8 @@ def parse_imdb_date(date_str):
   except ValueError:
     pass
   year_match = re.search(r'\b(19\d{2}|20\d{2})\b', date_str)
-  if year_match: return year_match.group(1)
+  if year_match:
+    return year_match.group(1)
   return date_str
 
 # 3. HELPER: SELECTOR UPDATE (BASED ON HTML SNIPPET)
@@ -106,7 +108,7 @@ def search_and_scrape(driver, search_name, max_results=MAX_RESULTS):
           print(f"       [x] MISMATCH (Expected '{target_clean}')")
           continue
         else:
-          print(f"       [✓] MATCH!")
+          print("       [✓] MATCH!")
 
         href = link_el.get_attribute("href")
         match = re.search(r'/name/(nm\d+)', href)

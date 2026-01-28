@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import time
+import os
 import re
 import urllib.parse
 from datetime import datetime
@@ -10,8 +11,16 @@ import csv
 import sys
 
 # --- CONFIGURATION ---
-CSV_OUTPUT_FILE = "wiki_audit.csv"
+OUTPUT_DIR = "../../data"
+CSV_FILENAME = "wiki_audit.csv"
+CSV_OUTPUT_FILE = os.path.join(OUTPUT_DIR, CSV_FILENAME)
+
 WIKI_API_URL = "https://en.wikipedia.org/w/api.php"
+
+# SKIP LOGIC
+# Set to "" to start from the beginning.
+# Set to a specific name (e.g., "Nina Gordon") to skip everything before it.
+START_FROM_NAME = "Alithea Tuttle"
 
 # 1. AUTH AND OPEN
 print("Connecting to Google Sheets...")
@@ -32,7 +41,8 @@ if not df.empty:
 def extract_birth_date(soup):
   """ Tries to find the birth date in YYYY-MM-DD format. """
   bday_tag = soup.find(class_="bday")
-  if bday_tag: return bday_tag.get_text().strip()
+  if bday_tag:
+    return bday_tag.get_text().strip()
 
   infobox = soup.find(class_="infobox")
   if infobox:
@@ -46,16 +56,21 @@ def extract_birth_date(soup):
           
           match_dmy = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', text)
           if match_dmy:
-            try: return datetime.strptime(match_dmy.group(0), "%d %B %Y").strftime("%Y-%m-%d")
-            except: pass
+            try:
+              return datetime.strptime(match_dmy.group(0), "%d %B %Y").strftime("%Y-%m-%d")
+            except:
+              pass
 
           match_mdy = re.search(r'([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})', text)
           if match_mdy:
-            try: return datetime.strptime(match_mdy.group(0), "%B %d, %Y").strftime("%Y-%m-%d")
-            except: pass
+            try:
+              return datetime.strptime(match_mdy.group(0), "%B %d, %Y").strftime("%Y-%m-%d")
+            except:
+              pass
 
           year_match = re.search(r'\b(19\d{2}|20\d{2})\b', text)
-          if year_match: return year_match.group(1)
+          if year_match:
+            return year_match.group(1)
   return ""
 
 # --- HELPER: RESOLVE REDIRECTS ---
@@ -73,7 +88,8 @@ def get_canonical_slug_from_api(title_or_slug):
     
     pages = data.get("query", {}).get("pages", {})
     for pid, pdata in pages.items():
-      if pid == "-1": return title_or_slug.replace(" ", "_")
+      if pid == "-1":
+        return title_or_slug.replace(" ", "_")
       final_title = pdata.get("title", "")
       if final_title:
         return final_title.replace(" ", "_")
@@ -202,7 +218,14 @@ def find_best_slug(name):
 total_rows = len(df)
 fieldnames = ["NAME", "Full Name", "born", "wikipedia", "SOURCE", "STATUS"]
 
+# Initialize processing flag based on START_FROM_NAME
+# If START_FROM_NAME is empty, start immediately (True).
+# If it has a value, start paused (False).
+start_processing = False if START_FROM_NAME else True
+
 print(f"Starting Safer Scan on {total_rows} rows...")
+if not start_processing:
+    print(f"NOTE: Skipping rows until NAME matches: '{START_FROM_NAME}'")
 
 with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
   writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -211,6 +234,18 @@ with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
   for index, row in df.iterrows():
     name = str(row['NAME'])
     
+    # --- SKIP LOGIC CHECK ---
+    # We check this FIRST. If we haven't found the start name yet,
+    # we skip the entire processing logic and the writing logic.
+    if not start_processing:
+        if name == START_FROM_NAME:
+            start_processing = True
+            print(f"\n---> MATCH FOUND: {name}. Resuming scrape from here.")
+        else:
+            # Skip this iteration entirely (no write to CSV)
+            continue
+
+    # --- MAIN PROCESSING ---
     sheet_full_name = str(row.get('Full Name', '')).strip()
     sheet_birth_date = str(row.get('born', '')).strip()
     sheet_slug = str(row.get('wikipedia', '')).strip()
@@ -273,10 +308,11 @@ with open(CSV_OUTPUT_FILE, mode='w', newline='', encoding='utf-8') as csv_file:
       row_data["SOURCE"] = "FAILED_SEARCH"
       row_data["STATUS"] = "NO_URL"
 
+    # Write ONLY if we are processing (which we are, if we passed the check above)
     writer.writerow(row_data)
     csv_file.flush() 
     
     # Consistent sleep
     time.sleep(0.5)
 
-print(f"\nDone. All rows processed and saved to {CSV_OUTPUT_FILE}")
+print(f"\nDone. Processed rows saved to {CSV_OUTPUT_FILE}")
