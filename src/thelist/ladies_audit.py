@@ -2,13 +2,7 @@ import pygsheets
 import pandas as pd
 import os
 import sys
-
-# --- IMPORT LOCAL UTILS ---
-try:
-  from . import bZdUtils
-except ImportError:
-  print("ERROR: Could not import 'bZdUtils'. Make sure bZdUtils.py is in the same directory.")
-  sys.exit(1)
+import util
 
 # --- CONFIGURATION ---
 IMAGES_DIR = '/Volumes/Moana/Images/Ladies/'
@@ -48,7 +42,7 @@ for index, row in df.iterrows():
   # NORMALIZE NAME ONLY
   raw_name = str(row['NAME']).strip()
   if not raw_name: continue
-  name = bZdUtils.normalize_unicode(raw_name)
+  name = util.normalize_unicode(raw_name)
   
   # DO NOT NORMALIZE ID
   raw_id = str(row['xIDENT']).strip()
@@ -94,7 +88,7 @@ for folder in folder_list:
   if '|' not in folder:
     # Check against Normalized Sheet Names
     # We normalize the whole folder string just to check against names
-    if bZdUtils.normalize_unicode(folder).strip() in sheet_db:
+    if util.normalize_unicode(folder).strip() in sheet_db:
       malformed_folders.append(folder)
     else:
       orphan_folders.append(folder)
@@ -107,7 +101,7 @@ for folder in folder_list:
 
   # 1. NAMES part -> Split by '&', strip, NORMALIZE
   raw_names_part = parts[0]
-  folder_names = [bZdUtils.normalize_unicode(n.strip()) for n in raw_names_part.split('&')]
+  folder_names = [util.normalize_unicode(n.strip()) for n in raw_names_part.split('&')]
 
   # 2. IDs part -> Split by '&', strip, DO NOT NORMALIZE
   raw_ids_part = parts[1]

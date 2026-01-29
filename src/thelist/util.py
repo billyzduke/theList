@@ -19,6 +19,16 @@ def generate_xIDENT(name, existing_ids=[]):
     if candidate_id not in existing_ids:
       return candidate_id
     salt += 1
+    
+def get_first_pos_arg():  
+  """
+  Retrieves the first positional argument from the command line.
+  """
+  if len(sys.argv) > 1:
+    return sys.argv[1]
+  else:
+    # print("Error: No name provided.")
+    return None
 
 def normalize_unicode(s, form='NFC'):
   """

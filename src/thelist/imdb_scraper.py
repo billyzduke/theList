@@ -5,6 +5,7 @@ import re
 import csv
 import os
 import urllib.parse
+from util import get_first_pos_arg 
 from datetime import datetime
 
 # --- SELENIUM IMPORTS ---
@@ -26,7 +27,11 @@ SEARCH_URL_BASE = "https://www.imdb.com/find/?q={}&s=nm"
 # SKIP LOGIC
 # Set to "" to start from the beginning.
 # Set to a specific name (e.g., "Nina Gordon") to skip everything before it.
-START_FROM_NAME = "Alithea Tuttle" 
+if __name__ == "__main__":
+  # Check if the user actually provided a name
+  START_FROM_NAME = get_first_pos_arg()
+  if not START_FROM_NAME:
+    START_FROM_NAME = ""
 
 # --- ENSURE DIRECTORY EXISTS ---
 if not os.path.exists(OUTPUT_DIR):

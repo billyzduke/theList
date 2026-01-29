@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import time
-import bZdUtils
+import util
 
 # Auth and Open 
 gc = pygsheets.authorize(service_file='credentials.json')
@@ -50,7 +50,7 @@ local_xIDENTs = []
 # gather relevant info from local drive
 for root, subs, imgs in os.walk(ladiesPath):
   if root.count('/') == 5: # disregard the root directory
-    folder_name = bZdUtils.normalize_unicode(os.path.basename(root)) 
+    folder_name = util.normalize_unicode(os.path.basename(root)) 
     if len(folder_name) and not str(folder_name).startswith('!'): #filter out categorical subdirectories
       if str(folder_name) == 'untitled folder':
         sys.exit("You've got an 'untitled folder' in your Ladies directory. You need to get rid of that before we can proceed.")
@@ -91,7 +91,7 @@ for root, subs, imgs in os.walk(ladiesPath):
             xIDENT = xIDENTs
         else:
           # Legacy / No ID Folder -> Mint New
-          xIDENT = bZdUtils.generate_xIDENT(folder_name, df_xIDENTs)
+          xIDENT = util.generate_xIDENT(folder_name, df_xIDENTs)
           df_xIDENTs.add(xIDENT)  
           name = folder_name
           folder_name = f'{name} | {xIDENT}'
@@ -100,8 +100,8 @@ for root, subs, imgs in os.walk(ladiesPath):
             parent_dir = os.path.dirname(root.rstrip('/'))
             new_path = os.path.join(parent_dir, folder_name)
             os.rename(root, new_path)
-            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'renamed_from', name)            
+            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+            LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'renamed_from', name)            
           except OSError as e:
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = f'ERROR ATTEMPTING TO RENAME LOCAL FOLDER: {name}\n{e}'
 
@@ -122,12 +122,12 @@ for root, subs, imgs in os.walk(ladiesPath):
           moa_ladies[xIDENT]['Image Folder?'] = 'Y (combo)'
         
         # annoying but apparently necessary
-        imgs = bZdUtils.remove_value_from_list(imgs, '.DS_Store') # have definitely had this issue
-        imgs = bZdUtils.remove_value_from_list(imgs, 'Thumbs.db') # just to be safe
+        imgs = util.remove_value_from_list(imgs, '.DS_Store') # have definitely had this issue
+        imgs = util.remove_value_from_list(imgs, 'Thumbs.db') # just to be safe
 
         # count and sort image files by ext/type 
         for i in imgs:
-          name_ext = bZdUtils.get_file_ext(i)            
+          name_ext = util.get_file_ext(i)            
           is_img = ['avif', 'bmp', 'gif', 'jpg', 'jpeg', 'png', 'psd', 'psb', 'tiff', 'webp']
           if name_ext['ext'] in is_img:
             file_at_path = root + '/' + i
@@ -136,11 +136,11 @@ for root, subs, imgs in os.walk(ladiesPath):
             if name_ext['ext'] == 'jpeg':
               j = root + '/' + name_ext['name'] + '.jpg'
               os.replace(file_at_path, j)
-              LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-              LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'jpeg -> jpg', [])
+              LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+              LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'jpeg -> jpg', [])
               LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name]['jpeg -> jpg'].append(j)     
               file_at_path = j
-              name_ext = bZdUtils.get_file_ext(j)
+              name_ext = util.get_file_ext(j)
               if '/' in name_ext['name']:
                 name_ext['name'] = os.path.basename(name_ext['name'])
 
@@ -150,11 +150,11 @@ for root, subs, imgs in os.walk(ladiesPath):
             if name_ext['ext'] in ['avif', 'bmp', 'gif', 'tiff']:
               # all should become pngs
               make_it_ping = 'png'
-              j = bZdUtils.safe_convert_image(file_at_path, make_it_ping)
-              file_ext = bZdUtils.get_file_ext(j)
+              j = util.safe_convert_image(file_at_path, make_it_ping)
+              file_ext = util.get_file_ext(j)
               if file_ext['ext'] == make_it_ping:
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], f'{name_ext['ext']} -> {make_it_ping}', [])
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], f'{name_ext['ext']} -> {make_it_ping}', [])
                 LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name][f'{name_ext['ext']} -> {make_it_ping}'].append(j)     
                 
                 file_at_path = j
@@ -178,11 +178,11 @@ for root, subs, imgs in os.walk(ladiesPath):
             if name_ext['ext'] == 'webp':
               # all should become jpgs
               make_it_peg = 'jpg'
-              j = bZdUtils.safe_convert_image(file_at_path, make_it_peg)
-              file_ext = bZdUtils.get_file_ext(j)
+              j = util.safe_convert_image(file_at_path, make_it_peg)
+              file_ext = util.get_file_ext(j)
               if file_ext['ext'] == make_it_peg:
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], f'{name_ext['ext']} -> {make_it_peg}', [])
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], f'{name_ext['ext']} -> {make_it_peg}', [])
                 LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name][f'{name_ext['ext']} -> {make_it_peg}'].append(j)     
                 
                 file_at_path = j
@@ -197,15 +197,15 @@ for root, subs, imgs in os.walk(ladiesPath):
 
             if name_ext['ext'] != 'psb' and name_ext['ext'] != 'psd':
               if '⊠' not in name_ext['name']:
-                pixel_dims = bZdUtils.get_image_size(file_at_path)
+                pixel_dims = util.get_image_size(file_at_path)
                 dims = str(pixel_dims['w']) + '⊠'
                 if pixel_dims['h'] != pixel_dims['w']:
                   dims += str(pixel_dims['h'])                
                 j = root + '/' + name_ext['name'] + '-' + dims + '.' + name_ext['ext']
                 os.replace(file_at_path, j)
               
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'pixel dims added', [])
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'pixel dims added', [])
                 LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name]['pixel dims added'].append(j)     
                 
                 file_at_path = j
@@ -216,7 +216,7 @@ for root, subs, imgs in os.walk(ladiesPath):
                 try:
                   pixel_dims
                 except NameError:
-                  pixel_dims = bZdUtils.get_image_size(file_at_path)
+                  pixel_dims = util.get_image_size(file_at_path)
                 if pixel_dims['h'] < 1024 or pixel_dims['w'] < 1024:
                   if pixel_dims['h'] < 1024 and pixel_dims['w'] < 1024: 
                     tags_to_add = ["Unfit AMF"]
@@ -226,13 +226,13 @@ for root, subs, imgs in os.walk(ladiesPath):
                   tags_to_add = ["Good 2 Go Girl!"]
                 macos_tags.set_all(tags_to_add, file=file_at_path)
                 
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
-                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'file tags updated', {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folder_name, {})
+                LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name], 'file tags updated', {})
                 LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folder_name]['file tags updated'][file_at_path] = tags_to_add     
           else:
             moa_ladies[xIDENT]['vids'].append(i)
-            LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'], folder_name, {})
-            LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name], 'vids', [])
+            LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'], folder_name, {})
+            LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name], 'vids', [])
             LOCAL_LADIES_CHANGED['LOCAL LADIES NOTED'][folder_name]['vids'].append(i)     
 
 # Sort the dictionary (now keyed by ID)
@@ -246,7 +246,7 @@ print("\n\n", 'CHECKING gsheet AGAINST local Ladies directory...', "\n")
 # --- 2. THE MAIN LOOP (Strict ID Keys) ---
 for xIDENT, loc_lady in loc_ladies.items():
   loc_subs = len(loc_lady['subs'])
-  name = bZdUtils.normalize_unicode(loc_lady['NAME'])
+  name = util.normalize_unicode(loc_lady['NAME'])
   
   # Strict Lookup: Does this xIDENT exist in the sheet?
   xIDEYE = df['xIDENT'] == xIDENT
@@ -265,7 +265,7 @@ for xIDENT, loc_lady in loc_ladies.items():
       sys.exit()
     
     # Create new row
-    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Full Name': '', 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/artist': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': bZdUtils.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
+    new_rem_lady = pd.DataFrame([{'xIDENT': xIDENT, 'NAME': name, 'Full Name': '', 'Image Folder?': 'Y', 'blendus?': 'N', 'whaddayado': '', 'aka/artist': '','known as/for': '', 'origin': '', 'born': '', 'died': '', 'irl': 'N', 'gif': loc_lady['gif'], 'jpg': loc_lady['jpg'], 'png': loc_lady['png'], 'subs': util.safe_str_to_int(loc_subs), 'insta': '', 'youtube': '', 'imdb': '', 'listal': '', 'wikipedia': '', 'url': '', 'blended with…': ''}])
     df = pd.concat([df, new_rem_lady], ignore_index=True)
     
     # Refresh the selector
@@ -290,13 +290,13 @@ for xIDENT, loc_lady in loc_ladies.items():
   
   if rem_lady['NAME'] != name:
     
-    if not str(rem_lady['NAME']).startswith("@") and not rem_lady['Full Name'] and bZdUtils.normalize_unicode(rem_lady['NAME']).strip().lower() != bZdUtils.normalize_unicode(name).strip().lower():
+    if not str(rem_lady['NAME']).startswith("@") and not rem_lady['Full Name'] and util.normalize_unicode(rem_lady['NAME']).strip().lower() != util.normalize_unicode(name).strip().lower():
       df.loc[xIDEYE, 'Full Name'] = rem_lady['NAME']
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Full Name'] = rem_lady['NAME']
     
     df.loc[xIDEYE, 'NAME'] = name
-    REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+    REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
     REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['NAME'] = name    
     
   if rem_lady['Image Folder?'] == 'Y':
@@ -308,7 +308,7 @@ for xIDENT, loc_lady in loc_ladies.items():
         m = isBlendus.search(psf)
         if m:
           ladyFolderPath = os.path.join(ladiesPath[:-1], loc_lady['folder'])
-          blendusFilePath = bZdUtils.normalize_unicode(os.path.join(ladyFolderPath, psf), form='NFD')
+          blendusFilePath = util.normalize_unicode(os.path.join(ladyFolderPath, psf), form='NFD')
           blenDims = re.compile(r'[\d]{3,4}')
           m = blenDims.search(psf)
           blendus = int(m.group())
@@ -328,10 +328,10 @@ for xIDENT, loc_lady in loc_ladies.items():
             maxBlendus = 'xlarge'
           
           df.loc[xIDEYE, 'blendus?'] = maxBlendus
-          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['blendus?'] = maxBlendus      
 
-        folderPath = bZdUtils.normalize_unicode(ladyFolderPath, form='NFD')
+        folderPath = util.normalize_unicode(ladyFolderPath, form='NFD')
         folder_tags = macos_tags.get_all(folderPath)
         folder_tag_names = [t.name for t in folder_tags]
         if "Yellow" not in folder_tag_names and "Good 2 Go Girl!" not in folder_tag_names:
@@ -341,16 +341,16 @@ for xIDENT, loc_lady in loc_ladies.items():
           else:
             folder_tags.append("Yellow")
           macos_tags.set_all(folder_tags, file=folderPath)
-          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
-          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'folder tags updated', {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'folder tags updated', {})
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name]['folder tags updated'][folderPath] = folder_tags
           
         blursed_tags = macos_tags.get_all(blendusFilePath)
         blursed_tag_names = [t.name for t in blursed_tags]
         if "Purple" not in blursed_tag_names and ("Unfit AMF" not in blursed_tag_names or "Good 2 Go Girl!" not in blursed_tag_names):
           macos_tags.set_all(blendus_tags, file=blendusFilePath)
-          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
-          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = bZdUtils.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'file tags updated', {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'], folderol_name, {})
+          LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name] = util.add_key_val_pair_if_needed(LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name], 'file tags updated', {})
           LOCAL_LADIES_CHANGED['LOCAL LADIES UPDATED'][folderol_name]['file tags updated'][blendusFilePath] = blendus_tags     
 
     cols = ['img', 'gif', 'jpg', 'png']
@@ -362,13 +362,13 @@ for xIDENT, loc_lady in loc_ladies.items():
         # Only update columns if this is the PRIMARY lady (non-zero stats), or if the remote sheet needs clearing
         if rem_lady[col] != loc_lady[col]:
           df.loc[xIDEYE, col] = loc_lady[col] 
-          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+          REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
           REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name][col] = loc_lady[col]          
       
     if imgs == 0 and loc_subs == 0 and not len(loc_lady['psf']):
       if rem_lady['Image Folder?'] == 'Y':
         df.loc[xIDEYE, 'Image Folder?'] = 'N' 
-        REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+        REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
         REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['Image Folder?'] = 'N'          
       
       try:
@@ -381,9 +381,9 @@ for xIDENT, loc_lady in loc_ladies.items():
       except OSError as e:
         LOCAL_LADIES_CHANGED['LOCAL LADIES DELETED'][folderol_name] = f'ERROR ATTEMPTING TO DELETE LOCAL FOLDER: {ladyPath}\n{e}'
       
-    if bZdUtils.safe_str_to_int(rem_lady['subs']) != loc_subs:
+    if util.safe_str_to_int(rem_lady['subs']) != loc_subs:
       df.loc[xIDEYE, 'subs'] = loc_subs 
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folderol_name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folderol_name]['subs'] = loc_subs    
     
 print("\n", 'FLIPPING THE SCRIPT!', "\n", 'CHECKING local Ladies directory AGAINST gsheet...', "\n")
@@ -399,7 +399,7 @@ for i, rem_lady in rem_ladies.iterrows():
     rawccupados = re.split(r',\s', rem_lady['whaddayado'])
     occupados = [x for x in rawccupados if x]
     for occupado in occupados:
-      whaddayalldo = bZdUtils.add_key_val_pair_if_needed(whaddayalldo, occupado, 0)
+      whaddayalldo = util.add_key_val_pair_if_needed(whaddayalldo, occupado, 0)
       whaddayalldo[occupado] += 1
       
   if rem_lady['Image Folder?'] == 'Y':
@@ -436,7 +436,7 @@ for i, rem_lady in rem_ladies.iterrows():
           changed = True
 
     if changed:
-      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = bZdUtils.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folder_name, {})
+      REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'] = util.add_key_val_pair_if_needed(REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'], folder_name, {})
       REMOTE_LADIES_CHANGED['REMOTE LADIES UPDATED'][folder_name]['(re)initialized'] = "with missing default column data."     
 
 print(json.dumps(REMOTE_LADIES_CHANGED, indent=2, default=str))
@@ -460,25 +460,21 @@ df = df.sort_values(
 has_tail = True
 while has_tail:
   tail = df.tail(1).iloc[0]
-  if bZdUtils.safe_str_to_int(tail['NAME'], tail['NAME']) == bZdUtils.safe_str_to_int(tail['NAME']):
+  if util.safe_str_to_int(tail['NAME'], tail['NAME']) == util.safe_str_to_int(tail['NAME']):
     df = df.iloc[:-1]
   else:
     has_tail = False
 
-raw_data_sheet = "blendus synced raw"
+raw_sheet = "blendus synced raw"
 
 try:
-    old_test_sheet = sh.worksheet_by_title(raw_data_sheet)
-    sh.del_worksheet(old_test_sheet)
-    print(f"\nDeleted old raw data sheet '{raw_data_sheet}'.")
+  xwks = sh.worksheet_by_title(raw_sheet)
+  xwks.clear() 
+  print(f"Cleared existing '{raw_sheet}' sheet.")
 except pygsheets.WorksheetNotFound:
-    pass 
+  xwks = sh.add_worksheet(raw_sheet, rows=100, cols=26)
+  print(f"Created fresh raw data sheet: {raw_sheet}\n")
 
-xwks = sh.add_worksheet(raw_data_sheet, rows=100, cols=26)
-
-print(f"Created fresh raw data sheet: {raw_data_sheet}\n")
-
-xwks.clear() 
 xwks.set_dataframe(df, start='A1', copy_head=True, fit=True)
 
 print(f"Successfully updated {len(df)} rows in a single batch.")

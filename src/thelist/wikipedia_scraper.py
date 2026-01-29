@@ -5,10 +5,9 @@ from bs4 import BeautifulSoup
 import time
 import os
 import re
-import urllib.parse
+from util import get_first_pos_arg 
 from datetime import datetime
 import csv
-import sys
 
 # --- CONFIGURATION ---
 OUTPUT_DIR = "../../data"
@@ -20,7 +19,11 @@ WIKI_API_URL = "https://en.wikipedia.org/w/api.php"
 # SKIP LOGIC
 # Set to "" to start from the beginning.
 # Set to a specific name (e.g., "Nina Gordon") to skip everything before it.
-START_FROM_NAME = "Alithea Tuttle"
+if __name__ == "__main__":
+  # Check if the user actually provided a name
+  START_FROM_NAME = get_first_pos_arg()
+  if not START_FROM_NAME:
+    START_FROM_NAME = ""
 
 # 1. AUTH AND OPEN
 print("Connecting to Google Sheets...")
