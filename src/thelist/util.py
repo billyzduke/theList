@@ -5,6 +5,11 @@ import sys
 import unicodedata
 from PIL import Image
 
+def add_key_val_pair_if_needed(d, k, v):
+  if k not in d:
+    d[k] = v
+  return d
+
 def generate_xIDENT(name, existing_ids=[]):
   ID_PREFIX = 'x'
   ID_LENGTH = 5 
@@ -19,32 +24,6 @@ def generate_xIDENT(name, existing_ids=[]):
     if candidate_id not in existing_ids:
       return candidate_id
     salt += 1
-    
-def get_first_pos_arg():  
-  """
-  Retrieves the first positional argument from the command line.
-  """
-  if len(sys.argv) > 1:
-    return sys.argv[1]
-  else:
-    # print("Error: No name provided.")
-    return None
-
-def normalize_unicode(s, form='NFC'):
-  """
-  Converts NFD (Mac style) to NFC (Web style) so names match.
-  """
-  if not isinstance(s, str):
-    s = str(s)
-  return unicodedata.normalize(form, s)
-
-def get_file_ext(file_name):
-  name_ext = {'name': '', 'ext': ''}
-  if isinstance(file_name, str) and len(file_name) > 0 and "." in file_name:
-    split = os.path.splitext(file_name)
-    name_ext['name'] = split[0]
-    name_ext['ext'] = split[1].lower()[1:]
-  return name_ext
 
 def get_image_size(file_at_path):
   valid_extensions = ['avif', 'bmp', 'gif', 'jpg', 'png', 'tiff', 'webp']
@@ -60,6 +39,59 @@ def get_image_size(file_at_path):
         return {'w': width, 'h': height}            
     except Exception as e:
       sys.exit(f"Error determining image size for: {file_at_path}: {e}")
+
+def get_file_ext(file_name):
+  name_ext = {'name': '', 'ext': ''}
+  if isinstance(file_name, str) and len(file_name) > 0 and "." in file_name:
+    split = os.path.splitext(file_name)
+    name_ext['name'] = split[0]
+    name_ext['ext'] = split[1].lower()[1:]
+  return name_ext
+    
+def get_first_pos_arg():  
+  """
+  Retrieves the first positional argument from the command line.
+  """
+  if len(sys.argv) > 1:
+    return sys.argv[1]
+  else:
+    # print("Error: No name provided.")
+    return None
+
+def line_info():
+  # Get the current frame
+  frame = inspect.currentframe()
+  # Get the caller's frame info
+  caller_frame = inspect.getframeinfo(frame.f_back)
+
+  print(f"File: {caller_frame.filename}, Line: {caller_frame.lineno}", "\n")
+
+def normalize_unicode(s, form='NFC'):
+  """
+  Converts NFD (Mac style) to NFC (Web style) so names match.
+  """
+  if not isinstance(s, str):
+    s = str(s)
+  return unicodedata.normalize(form, s)
+
+def remove_value_from_list(arr, value):
+  """
+  Removes all occurrences of 'value' from the list 'arr'.
+  Returns the updated list.
+  """
+  if not isinstance(arr, list):
+    #raise TypeError("arr must be a list")
+    return arr
+
+  # Check if value exists
+  if value not in arr:
+    #print(f"Value '{value}' not found in list.")
+    return arr
+
+  # Remove all occurrences
+  arr = [item for item in arr if item != value]
+  #print(f"Value '{value}' removed successfully.")
+  return arr
 
 def safe_convert_image(file_at_path, target_format="png"):
   target_format = target_format.lower()
@@ -101,18 +133,9 @@ def safe_convert_image(file_at_path, target_format="png"):
   except Exception as e:
     sys.exit(f"Error converting image file {file_at_path} to {target_format}: {e}")
                     
-def line_info():
-  # Get the current frame
-  frame = inspect.currentframe()
-  # Get the caller's frame info
-  caller_frame = inspect.getframeinfo(frame.f_back)
-
-  print(f"File: {caller_frame.filename}, Line: {caller_frame.lineno}", "\n")
-
-# Convert string to integer safely in Python
 def safe_str_to_int(s, return_on_fail=None):
   """
-  Converts a string to an integer with error handling.
+  Converts a string to an integer safely in Python with error handling.
   Returns the integer if successful, or return_on_fail value if conversion fails.
   """
   try:
@@ -121,35 +144,3 @@ def safe_str_to_int(s, return_on_fail=None):
   except ValueError:
     #print(f"Error: '{s}' is not a valid integer.")
     return return_on_fail
-
-def remove_value_from_list(arr, value):
-  """
-  Removes all occurrences of 'value' from the list 'arr'.
-  Returns the updated list.
-  """
-  if not isinstance(arr, list):
-    #raise TypeError("arr must be a list")
-    return arr
-
-  # Check if value exists
-  if value not in arr:
-    #print(f"Value '{value}' not found in list.")
-    return arr
-
-  # Remove all occurrences
-  arr = [item for item in arr if item != value]
-  #print(f"Value '{value}' removed successfully.")
-  return arr
-
-def pretty_dump(d, indent=0):
-  for key, value in d.items():
-    print('\t' * indent + str(key))
-  if isinstance(value, dict):
-    pretty_dump(value, indent+1)
-  else:
-    print('\t' * (indent+1) + str(value))
-    
-def add_key_val_pair_if_needed(d, k, v):
-  if k not in d:
-    d[k] = v
-  return d
