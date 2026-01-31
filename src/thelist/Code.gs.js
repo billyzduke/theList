@@ -287,7 +287,7 @@ function applyLinksToRange(range, type) {
     
     // Find "Hexcode" column in Registry Sheet
     var headers = lookupSheet.getRange(1, 1, 1, lookupSheet.getLastColumn()).getValues()[0];
-    var hexColIdx = headers.indexOf("Hexcode");
+    var hexColIdx = headers.indexOf(BLENDER.REGISTRY.BLEND_ID_COL_NAME);
     if (hexColIdx == -1) hexColIdx = 0; // Fallback to Col A (Index 0) -> +1 for getRange
     
     var lastRow = lookupSheet.getLastRow();
@@ -483,7 +483,7 @@ function syncRegistryToPeople() {
   const rawHeaders = rawSheet.getRange(1, 1, 1, rawSheet.getLastColumn()).getValues()[0];
 
   const regBlendColIdx = regHeaders.indexOf(BLENDER.REGISTRY.WITH_COL_NAME); 
-  let regHexColIdx = regHeaders.indexOf("Hexcode"); 
+  let regHexColIdx = regHeaders.indexOf(BLENDER.REGISTRY.BLEND_ID_COL_NAME); 
   if (regHexColIdx === -1) regHexColIdx = 0; 
 
   const rawNameColIdx = rawHeaders.indexOf("NAME");
@@ -590,55 +590,56 @@ function colorizeHexColumn() {
    * Sets text color to Black or White based on contrast.
    */
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(BLENDER.REGISTRY.SHEET_NAME);
-  if (!sheet) return;
-  const HEX_COL_INDEX = getColumnIndexByName(sheet, "hexcode"); // Column A
-  const START_ROW = BLENDER.REGISTRY.DATA_START_ROW;     // Skip header
+  const sheets = [ss.getSheetByName(BLENDER.REGISTRY.SHEET_NAME), ss.getSheetByName('PatiencePt3 - Cosplayers')];
+  for (const sheet in sheets) { 
+    const HEX_COL_INDEX = getColumnIndexByName(sheet, BLENDER.REGISTRY.BLEND_ID_COL_NAME); // Column A
+    const START_ROW = BLENDER.REGISTRY.DATA_START_ROW;     // Skip header
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < START_ROW) return;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < START_ROW) return;
 
-  // Get all hex codes in one batch for speed
-  const range = sheet.getRange(START_ROW, HEX_COL_INDEX, lastRow - START_ROW + 1, 1);
-  const values = range.getValues();
-  
-  const backgrounds = [];
-  const fontColors = [];
-
-  for (let i = 0; i < values.length; i++) {
-    let hex = values[i][0].toString().trim();
+    // Get all hex codes in one batch for speed
+    const range = sheet.getRange(START_ROW, HEX_COL_INDEX, lastRow - START_ROW + 1, 1);
+    const values = range.getValues();
     
-    // Check if it looks like a valid 6-digit hex code (A1B2C3)
-    // We allow it with or without the '#' prefix
-    const cleanHex = hex.replace('#', '');
-    
-    if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
-      // 1. Set Background (needs # prefix)
-      backgrounds.push([`#${cleanHex}`]);
+    const backgrounds = [];
+    const fontColors = [];
+
+    for (let i = 0; i < values.length; i++) {
+      let hex = values[i][0].toString().trim();
       
-      // 2. Calculate Contrast (YIQ Formula)
-      // Extract RGB values
-      const r = parseInt(cleanHex.substr(0, 2), 16);
-      const g = parseInt(cleanHex.substr(2, 2), 16);
-      const b = parseInt(cleanHex.substr(4, 2), 16);
+      // Check if it looks like a valid 6-digit hex code (A1B2C3)
+      // We allow it with or without the '#' prefix
+      const cleanHex = hex.replace('#', '');
       
-      // Calculate luminance (perceived brightness)
-      const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-      
-      // Threshold: 128 is the standard halfway point
-      // If bright (>=128), text is black. If dark (<128), text is white.
-      fontColors.push([yiq >= 128 ? 'black' : 'white']);
-      
-    } else {
-      // If invalid/empty, reset to white background/black text
-      backgrounds.push([null]); 
-      fontColors.push(['black']);
+      if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+        // 1. Set Background (needs # prefix)
+        backgrounds.push([`#${cleanHex}`]);
+        
+        // 2. Calculate Contrast (YIQ Formula)
+        // Extract RGB values
+        const r = parseInt(cleanHex.substr(0, 2), 16);
+        const g = parseInt(cleanHex.substr(2, 2), 16);
+        const b = parseInt(cleanHex.substr(4, 2), 16);
+        
+        // Calculate luminance (perceived brightness)
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        
+        // Threshold: 128 is the standard halfway point
+        // If bright (>=128), text is black. If dark (<128), text is white.
+        fontColors.push([yiq >= 128 ? 'black' : 'white']);
+        
+      } else {
+        // If invalid/empty, reset to white background/black text
+        backgrounds.push([null]); 
+        fontColors.push(['black']);
+      }
     }
-  }
 
-  // Apply changes in one batch (much faster than loop)
-  range.setBackgrounds(backgrounds);
-  range.setFontColors(fontColors);
+    // Apply changes in one batch (much faster than loop)
+    range.setBackgrounds(backgrounds);
+    range.setFontColors(fontColors);
+  }
 }
 
 function findBrokenLinks() {
