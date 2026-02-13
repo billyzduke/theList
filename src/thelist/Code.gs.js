@@ -591,7 +591,7 @@ function colorizeHexColumn() {
    */
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheets = [ss.getSheetByName(BLENDER.REGISTRY.SHEET_NAME), ss.getSheetByName('PatiencePt3 - Cosplayers')];
-  for (const sheet in sheets) { 
+  for (const sheet of sheets) { 
     const HEX_COL_INDEX = getColumnIndexByName(sheet, BLENDER.REGISTRY.BLEND_ID_COL_NAME); // Column A
     const START_ROW = BLENDER.REGISTRY.DATA_START_ROW;     // Skip header
 
